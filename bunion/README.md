@@ -35,6 +35,15 @@ python evaluate.py --cache work/cache.npz --ckpt work/run1/best.pt --out work/ru
 - ImageNet ResNet-18 starter weights: timm `resnet18_a1_0-d63eafa0.pth` from the
   pytorch-image-models GitHub releases.
 
+## GPU training (Colab)
+
+`train_colab.ipynb` downloads the data (`download_data.py`), then trains both
+passes with a ResNet-34 at higher resolution and gives back the ONNX models
+and test scores. Open it in Colab with a GPU runtime and run all cells.
+
+Second pass: `zoom_prep.py` crops the forefoot around the first-pass points
+from the original X-ray, and the same `train.py` / `evaluate.py` run on it.
+
 ## Notes
 
 - The official split puts 42 patients in both train and test, so we also score

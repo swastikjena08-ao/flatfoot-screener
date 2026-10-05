@@ -11,13 +11,22 @@ import torchvision
 from common import N_PTS, STRIDE
 
 
+CHANNELS = {"resnet18": (64, 128, 256, 512), "resnet34": (64, 128, 256, 512),
+            "resnet50": (256, 512, 1024, 2048)}
+
+
 class PointNet(nn.Module):
-    def __init__(self, pretrained_path=None):
+    """weights: None, a local .pth state dict, or "imagenet" (torchvision download)."""
+
+    def __init__(self, weights=None, arch="resnet18"):
         super().__init__()
-        r = torchvision.models.resnet18()
-        if pretrained_path:
-            sd = torch.load(pretrained_path, map_location="cpu")
-            r.load_state_dict(sd, strict=False)
+        if weights == "imagenet":
+            r = getattr(torchvision.models, arch)(weights="DEFAULT")
+        else:
+            r = getattr(torchvision.models, arch)()
+            if weights:
+                r.load_state_dict(torch.load(weights, map_location="cpu"), strict=False)
+        c1, c2, c3, c4 = CHANNELS[arch]
         self.stem = nn.Sequential(r.conv1, r.bn1, r.relu, r.maxpool)
         self.l1, self.l2, self.l3, self.l4 = r.layer1, r.layer2, r.layer3, r.layer4
 
@@ -25,9 +34,9 @@ class PointNet(nn.Module):
             return nn.Sequential(nn.Conv2d(cin, cout, 3, padding=1, bias=False), nn.BatchNorm2d(cout), nn.ReLU(inplace=True))
 
         # stride 32 -> 16 -> 8 -> 4, with skip connections from the backbone
-        self.u3 = up(512 + 256, 256)
-        self.u2 = up(256 + 128, 128)
-        self.u1 = up(128 + 64, 64)
+        self.u3 = up(c4 + c3, 256)
+        self.u2 = up(256 + c2, 128)
+        self.u1 = up(128 + c1, 64)
         self.out = nn.Conv2d(64, N_PTS, 1)
 
     def forward(self, x):
@@ -46,8 +55,8 @@ def soft_argmax(logits):
     """Heatmap logits -> (B, N, 2) points in input-pixel coordinates (x, y)."""
     b, n, h, w = logits.shape
     p = F.softmax(logits.reshape(b, n, -1), -1).reshape(b, n, h, w)
-    xs = (torch.arange(w, dtype=p.dtype) + 0.5) * STRIDE
-    ys = (torch.arange(h, dtype=p.dtype) + 0.5) * STRIDE
+    xs = (torch.arange(w, dtype=p.dtype, device=p.device) + 0.5) * STRIDE
+    ys = (torch.arange(h, dtype=p.dtype, device=p.device) + 0.5) * STRIDE
     x = (p.sum(2) * xs).sum(-1)
     y = (p.sum(3) * ys).sum(-1)
     return torch.stack([x, y], -1)
