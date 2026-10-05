@@ -16,7 +16,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from common import IN_W, IN_H, N_PTS, STRIDE, angles
+from common import N_PTS, STRIDE, angles
 from model import PointNet, soft_argmax
 
 MEAN, STD = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
@@ -33,9 +33,10 @@ def augment(img, pts, rng):
     """Random rotation, scale and shift (applied to image and points) plus contrast changes."""
     ang = rng.uniform(-15, 15)
     sc = rng.uniform(0.85, 1.15)
-    M = cv2.getRotationMatrix2D((IN_W / 2, IN_H / 2), ang, sc)
+    h, w = img.shape
+    M = cv2.getRotationMatrix2D((w / 2, h / 2), ang, sc)
     M[:, 2] += rng.uniform(-16, 16, 2)
-    img = cv2.warpAffine(img, M, (IN_W, IN_H), flags=cv2.INTER_LINEAR, borderValue=0)
+    img = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR, borderValue=0)
     pts = np.c_[pts, np.ones(len(pts))] @ M.T
     f = img.astype(np.float32) / 255.0
     f = np.clip(f ** rng.uniform(0.7, 1.4) * rng.uniform(0.8, 1.2) + rng.uniform(-0.1, 0.1), 0, 1)
@@ -99,7 +100,7 @@ def main():
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=1e-4)
     steps = a.epochs * math.ceil(len(tr) / a.bs)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=steps, pct_start=0.1)
-    hm_h, hm_w = IN_H // STRIDE, IN_W // STRIDE
+    hm_h, hm_w = imgs.shape[1] // STRIDE, imgs.shape[2] // STRIDE
 
     best, log = 1e9, []
     for ep in range(a.epochs):
