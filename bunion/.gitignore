@@ -1,0 +1,7 @@
+# HVAngleEst data (CC BY-NC-ND 4.0, never re-share) and training outputs
+*.npz
+*.pt
+*.pth
+*.onnx
+*.png
+work/
