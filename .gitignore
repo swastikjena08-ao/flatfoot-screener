@@ -1,0 +1,35 @@
+# X-ray images and datasets (patient data stays out of the repo)
+*.jpg
+*.JPG
+*.jpeg
+*.tif
+*.tiff
+*.dcm
+*.zip
+data/
+datasets/
+tests/data/
+
+# Build output (the .exe is over GitHub's 100 MB limit; publish it as a Release asset)
+dist/
+build/
+
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+secrets.*
+
+# Local backups and tooling output
+*.bak
+graphify-out/
