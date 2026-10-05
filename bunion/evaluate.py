@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 import torch
 
-from common import IN_W, IN_H
 from model import PointNet, soft_argmax
 from train import predict, score
 
@@ -66,7 +65,7 @@ def main():
     pd.DataFrame(rows).to_csv(os.path.join(a.out, "test_predictions.csv"), index=False)
 
     model.eval()
-    torch.onnx.export(Exported(model), torch.zeros(1, 3, IN_H, IN_W), os.path.join(a.out, "bunion_points.onnx"),
+    torch.onnx.export(Exported(model), torch.zeros(1, 3, *imgs.shape[1:]), os.path.join(a.out, "bunion_points.onnx"),
                       input_names=["image"], output_names=["points"], dynamic_axes={"image": {0: "batch"}},
                       opset_version=17, dynamo=False)
     print("exported", os.path.join(a.out, "bunion_points.onnx"))
