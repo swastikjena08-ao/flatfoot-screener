@@ -21,6 +21,7 @@ Download them separately.
 pip install -r requirements.txt
 python prep.py --data /path/to/hvangleest --out work/cache.npz
 python train.py --cache work/cache.npz --weights work/resnet18_imagenet.pth --out work/run1
+python evaluate.py --cache work/cache.npz --ckpt work/run1/best.pt --out work/run1
 ```
 
 - `prep.py` cuts each labeled foot out of its X-ray (keeping the aspect ratio so
