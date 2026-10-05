@@ -24,7 +24,7 @@ Z_W, Z_H = 256, 384  # zoomed input (width, height)
 PAD = 1.6            # region size relative to the points' bounding box
 
 
-def region_map(pts_img, mirror):
+def region_map(pts_img, mirror, Z_W=Z_W, Z_H=Z_H):
     """Affine map from original-image px to the zoomed crop, framing the given points."""
     x1, y1 = pts_img.min(0)
     x2, y2 = pts_img.max(0)
@@ -46,12 +46,17 @@ def main():
     ap.add_argument("--cache", required=True, help="first-pass cache from prep.py")
     ap.add_argument("--ckpt", required=True, help="first-pass checkpoint")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--arch", default="resnet18", help="must match the checkpoint")
+    ap.add_argument("--width", type=int, default=Z_W)
+    ap.add_argument("--height", type=int, default=Z_H)
     a = ap.parse_args()
 
     z = np.load(a.cache)
     meta = pd.DataFrame(json.loads(str(z["meta"])))
-    model = PointNet()
+    model = PointNet(arch=a.arch)
     model.load_state_dict(torch.load(a.ckpt, map_location="cpu"))
+    if torch.cuda.is_available():
+        model = model.cuda()
     pred1 = predict(model, z["imgs"])
 
     imgs, pts, rows = [], [], []
@@ -64,8 +69,8 @@ def main():
         inv1 = cv2.invertAffineTransform(M1)
         true_img = apply(inv1, z["pts"][i])
         frame = true_img if r.split == "train" else apply(inv1, pred1[i])
-        M2 = region_map(frame, r.side == "left")
-        crop = cv2.warpAffine(g, M2, (Z_W, Z_H), flags=cv2.INTER_AREA, borderValue=0)
+        M2 = region_map(frame, r.side == "left", a.width, a.height)
+        crop = cv2.warpAffine(g, M2, (a.width, a.height), flags=cv2.INTER_AREA, borderValue=0)
         imgs.append(crop)
         pts.append(canonical_points(apply(M2, true_img)))
         rows.append({**r.to_dict(), "M": M2.tolist(), "M1": r.M})

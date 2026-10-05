@@ -34,13 +34,16 @@ def main():
     ap.add_argument("--cache", required=True)
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--arch", default="resnet18", help="must match the checkpoint")
     a = ap.parse_args()
 
     z = np.load(a.cache)
     imgs = z["imgs"]
     meta = pd.DataFrame(json.loads(str(z["meta"])))
-    model = PointNet()
+    model = PointNet(arch=a.arch)
     model.load_state_dict(torch.load(a.ckpt, map_location="cpu"))
+    if torch.cuda.is_available():
+        model = model.cuda()
 
     seen = set(meta[meta.split.isin(["train", "val"])].patient_id)
     sets = {
@@ -64,7 +67,7 @@ def main():
         json.dump(results, f, indent=2)
     pd.DataFrame(rows).to_csv(os.path.join(a.out, "test_predictions.csv"), index=False)
 
-    model.eval()
+    model = model.cpu().eval()
     torch.onnx.export(Exported(model), torch.zeros(1, 3, *imgs.shape[1:]), os.path.join(a.out, "bunion_points.onnx"),
                       input_names=["image"], output_names=["points"], dynamic_axes={"image": {0: "batch"}},
                       opset_version=17, dynamo=False)

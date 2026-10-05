@@ -47,8 +47,8 @@ def augment(img, pts, rng):
 
 def heatmap_targets(pts, h, w, sigma=1.5):
     """Normalized Gaussian per point on the heatmap grid, for the auxiliary loss."""
-    ys = (torch.arange(h).float() + 0.5) * STRIDE
-    xs = (torch.arange(w).float() + 0.5) * STRIDE
+    ys = (torch.arange(h, device=pts.device).float() + 0.5) * STRIDE
+    xs = (torch.arange(w, device=pts.device).float() + 0.5) * STRIDE
     dx = (xs.view(1, 1, 1, w) - pts[..., 0].view(*pts.shape[:2], 1, 1)) / STRIDE
     dy = (ys.view(1, 1, h, 1) - pts[..., 1].view(*pts.shape[:2], 1, 1)) / STRIDE
     g = torch.exp(-(dx ** 2 + dy ** 2) / (2 * sigma ** 2))
@@ -58,9 +58,10 @@ def heatmap_targets(pts, h, w, sigma=1.5):
 @torch.no_grad()
 def predict(model, imgs, bs=32):
     model.eval()
+    dev = next(model.parameters()).device
     out = []
     for i in range(0, len(imgs), bs):
-        out.append(soft_argmax(model(to_tensor(imgs[i:i + bs]))).numpy())
+        out.append(soft_argmax(model(to_tensor(imgs[i:i + bs]).to(dev))).cpu().numpy())
     return np.concatenate(out)
 
 
@@ -77,7 +78,8 @@ def score(pred, meta):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", required=True)
-    ap.add_argument("--weights", default=None)
+    ap.add_argument("--weights", default=None, help='local .pth, or "imagenet" to download')
+    ap.add_argument("--arch", default="resnet18", choices=["resnet18", "resnet34", "resnet50"])
     ap.add_argument("--out", required=True)
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--bs", type=int, default=16)
@@ -96,7 +98,8 @@ def main():
     if a.limit:
         tr, va = tr[:a.limit], va[:max(8, a.limit // 4)]
 
-    model = PointNet(a.weights)
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    model = PointNet(a.weights, a.arch).to(dev)
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=1e-4)
     steps = a.epochs * math.ceil(len(tr) / a.bs)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=steps, pct_start=0.1)
@@ -110,8 +113,8 @@ def main():
         for i in range(0, len(order), a.bs):
             idx = order[i:i + a.bs]
             batch = [augment(imgs[j], pts[j], rng) for j in idx]
-            x = to_tensor(np.stack([b[0] for b in batch]))
-            y = torch.from_numpy(np.stack([b[1] for b in batch]))
+            x = to_tensor(np.stack([b[0] for b in batch])).to(dev)
+            y = torch.from_numpy(np.stack([b[1] for b in batch])).to(dev)
             logits = model(x)
             p = soft_argmax(logits)
             l_pts = F.smooth_l1_loss(p, y, beta=2.0)

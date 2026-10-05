@@ -13,7 +13,8 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from common import IN_W, IN_H, LINES, canonical_points
+import common
+from common import LINES, canonical_points
 
 MARGIN = 0.05  # extra border around the labeled foot box, as a fraction of box size
 
@@ -24,6 +25,7 @@ def parse(s):
 
 def crop_foot(img, box_px, mirror):
     """Return the letterboxed crop and the affine map from image px to crop px."""
+    IN_W, IN_H = common.IN_W, common.IN_H
     h, w = img.shape[:2]
     x1, y1, x2, y2 = box_px
     bw, bh = x2 - x1, y2 - y1
@@ -45,7 +47,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="/mnt/project-files/datasets/hvangleest")
     ap.add_argument("--out", default="cache.npz")
+    ap.add_argument("--width", type=int, default=common.IN_W)
+    ap.add_argument("--height", type=int, default=common.IN_H)
     a = ap.parse_args()
+    common.IN_W, common.IN_H = a.width, a.height
 
     df = pd.read_csv(os.path.join(a.data, "HVAngleEst", "datasets.csv"))
     split_of = {}
