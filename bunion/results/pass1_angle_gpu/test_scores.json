@@ -1,0 +1,26 @@
+{
+  "val": {
+    "n": 321,
+    "hva_mae": 1.8719,
+    "hva_within3": 0.8598,
+    "ima_mae": 1.2935,
+    "ima_within3": 0.9439,
+    "patients": 266
+  },
+  "test_official": {
+    "n": 160,
+    "hva_mae": 1.7691,
+    "hva_within3": 0.8375,
+    "ima_mae": 1.1375,
+    "ima_within3": 0.9563,
+    "patients": 134
+  },
+  "test_clean": {
+    "n": 108,
+    "hva_mae": 1.8557,
+    "hva_within3": 0.8241,
+    "ima_mae": 1.1293,
+    "ima_within3": 0.9444,
+    "patients": 83
+  }
+}
