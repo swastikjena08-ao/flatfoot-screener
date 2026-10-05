@@ -130,3 +130,7 @@ flatfoot_app/
 ## Built with
 
 [PySide6](https://doc.qt.io/qtforpython-6/) · [ONNX Runtime](https://onnxruntime.ai/) · [Pillow](https://python-pillow.org/) · [NumPy](https://numpy.org/) · models trained in [Google Colab](https://colab.research.google.com/)
+
+## AI assistance
+
+Parts of this project's code, documentation and repository setup were written with help from [Claude](https://claude.ai) (Anthropic).
