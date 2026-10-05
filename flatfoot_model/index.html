@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flatfoot X-ray Screener</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: radiology reading room. Dark lightbox viewer on the left, findings panel on the right, model card below. */
+:root {
+  --bg: #0d1115;
+  --panel: #151b21;
+  --panel-2: #1b232b;
+  --line: #27313b;
+  --fg: #e4e9ed;
+  --muted: #8a97a3;
+  --accent: #6cc4cf;
+  --accent-ink: #0d1115;
+  --flat: #f0a35e;
+  --normal: #7cc597;
+  --warn: #e3c565;
+  --viewer: #05080a;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #eef1f3; --panel: #ffffff; --panel-2: #f5f7f8; --line: #d6dde2;
+    --fg: #142029; --muted: #56646f; --accent: #1b7f8c; --accent-ink: #ffffff;
+    --flat: #b0601a; --normal: #2d7a4c; --warn: #8a6d0b; --viewer: #0b0f12;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #eef1f3; --panel: #ffffff; --panel-2: #f5f7f8; --line: #d6dde2;
+  --fg: #142029; --muted: #56646f; --accent: #1b7f8c; --accent-ink: #ffffff;
+  --flat: #b0601a; --normal: #2d7a4c; --warn: #8a6d0b; --viewer: #0b0f12;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-inline: 20px;
+  padding-block: 28px 56px;
+  display: grid;
+  gap: 28px;
+}
+
+/* Header */
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.brand h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-stretch: 72%;
+  font-weight: 750;
+  font-size: clamp(1.9rem, 4.2vw, 2.7rem);
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.brand p { margin: 8px 0 0; color: var(--muted); max-width: 60ch; }
+.status {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px;
+  background: var(--panel);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
+.status[data-state="ready"] .dot { background: var(--normal); }
+.status[data-state="error"] .dot { background: var(--flat); }
+
+/* Main grid */
+.main { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
+
+/* Viewer */
+.viewer {
+  background: var(--viewer);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  display: grid;
+}
+.stage {
+  position: relative;
+  min-height: 380px;
+  display: grid;
+  place-items: center;
+  color: #c9d3da;
+}
+.stage canvas { display: block; max-width: 100%; max-height: 70vh; height: auto; }
+.overlay-text {
+  position: absolute; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45;
+  color: #9fb4c0; pointer-events: none; text-shadow: 0 1px 2px #000;
+}
+.ot-tl { top: 10px; left: 12px; }
+.ot-tr { top: 10px; right: 12px; text-align: right; }
+.ot-bl { bottom: 10px; left: 12px; }
+.ot-br { bottom: 10px; right: 12px; text-align: right; }
+
+.drop {
+  margin: 18px;
+  width: calc(100% - 36px);
+  min-height: 340px;
+  border: 1.5px dashed #3a4854;
+  border-radius: 6px;
+  display: grid; place-items: center; text-align: center;
+  padding: 28px 20px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  background: transparent;
+  color: #c9d3da;
+  font: inherit;
+}
+.drop:hover, .drop.is-over { border-color: var(--accent); background: rgba(108,196,207,.06); }
+.drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.drop strong { display: block; font-family: var(--font-display); font-stretch: 85%; font-size: 1.25rem; font-weight: 650; color: #e4e9ed; }
+.drop span { display: block; margin-top: 6px; color: #8a97a3; font-size: 14px; }
+.drop svg { width: 132px; height: auto; margin: 0 auto 14px; display: block; opacity: .85; }
+
+.toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+  padding: 12px 14px; border-top: 1px solid #1d262e; background: #0a0e11;
+  color: #b8c4cc; font-size: 13.5px;
+}
+.toolbar label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.toolbar input[type="range"] { width: 120px; accent-color: #6cc4cf; }
+.toolbar input[type="checkbox"] { accent-color: #6cc4cf; width: 16px; height: 16px; }
+.spacer { flex: 1; }
+
+button.btn {
+  font: inherit; font-weight: 600; font-size: 14px;
+  border-radius: 5px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--fg);
+}
+.toolbar button.btn { background: #151b21; color: #e4e9ed; border-color: #2c3843; }
+button.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+button.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Findings panel */
+.findings {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 20px; display: grid; gap: 18px; min-width: 0;
+}
+.eyebrow {
+  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); margin: 0;
+}
+.verdict { display: grid; gap: 8px; }
+.chip {
+  justify-self: start; font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+  padding: 4px 9px; border-radius: 4px; border: 1px solid currentColor; color: var(--muted);
+}
+.chip[data-kind="flat"] { color: var(--flat); }
+.chip[data-kind="normal"] { color: var(--normal); }
+.chip[data-kind="border"] { color: var(--warn); }
+.verdict h2 {
+  margin: 0; font-family: var(--font-display); font-stretch: 78%; font-weight: 720;
+  font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.08; text-wrap: balance;
+}
+.verdict p { margin: 0; color: var(--muted); }
+
+.meter { display: grid; gap: 8px; }
+.meter-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.meter-head b { font-family: var(--font-mono); font-weight: 500; font-size: 1.7rem; font-variant-numeric: tabular-nums; }
+.meter-head span { color: var(--muted); font-size: 13px; }
+.track {
+  position: relative; height: 14px; border-radius: 3px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--normal) 55%, transparent), color-mix(in srgb, var(--flat) 55%, transparent));
+}
+.band { position: absolute; top: 0; bottom: 0; left: 35%; width: 30%; background: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--fg) 18%, transparent) 4px 6px); }
+.tick { position: absolute; top: -4px; bottom: -4px; left: 50%; width: 2px; background: var(--fg); opacity: .55; }
+.marker {
+  position: absolute; top: 50%; width: 18px; height: 18px; border-radius: 50%;
+  transform: translate(-50%, -50%); background: var(--panel); border: 3px solid var(--fg);
+  left: 50%; transition: left .5s cubic-bezier(.2,.8,.2,1);
+}
+.scale { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+
+.explain { margin: 0; font-size: 14.5px; }
+.note {
+  font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; margin: 0;
+}
+
+/* Model card */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; }
+section.info {
+  border-top: 2px solid var(--fg); padding-top: 14px; display: grid; gap: 12px; min-width: 0; align-content: start;
+}
+section.info h3 {
+  margin: 0; font-family: var(--font-display); font-stretch: 80%; font-weight: 700; font-size: 1.2rem;
+}
+section.info p, section.info li { margin: 0; color: var(--fg); max-width: 65ch; }
+section.info ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.metrics { width: 100%; border-collapse: collapse; font-size: 14px; }
+.metrics td { padding: 7px 0; border-bottom: 1px solid var(--line); }
+.metrics td:last-child { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.metrics tr:last-child td { border-bottom: 0; }
+.muted { color: var(--muted) !important; }
+
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+
+.err {
+  border: 1px solid var(--flat); color: var(--fg); background: color-mix(in srgb, var(--flat) 10%, var(--panel));
+  border-radius: 6px; padding: 12px 14px; font-size: 14px;
+}
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) { .marker { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>Flatfoot X-ray Screener</h1>
+      <p>Upload a lateral (side-view) weight-bearing foot X-ray. A neural network estimates whether it shows pes planus and highlights the region it used.</p>
+    </div>
+    <div class="status" id="status" data-state="loading" role="status" aria-live="polite">
+      <span class="dot"></span><span id="statusText">Loading model…</span>
+    </div>
+  </header>
+
+  <div id="loadError" class="err" hidden></div>
+
+  <div class="main">
+    <!-- Viewer -->
+    <div class="viewer">
+      <div class="stage" id="stage">
+        <button class="drop" id="drop" type="button" aria-describedby="dropHint">
+          <div>
+            <svg viewBox="0 0 160 80" fill="none" stroke="#6cc4cf" stroke-width="2" aria-hidden="true">
+              <path d="M22 8 v34 c0 10 -6 16 -6 24 c0 6 6 8 14 8 h104 c10 0 14 -4 14 -8 c0 -6 -8 -8 -22 -12 c-18 -5 -34 -10 -48 -18 c-10 -6 -14 -14 -16 -28" />
+              <path d="M40 74 c20 -12 50 -12 80 -4" stroke-dasharray="4 4" opacity=".7"/>
+            </svg>
+            <strong>Drop an X-ray here</strong>
+            <span id="dropHint">or click to choose a file · JPG or PNG · you can also paste</span>
+          </div>
+        </button>
+        <canvas id="view" hidden aria-label="Uploaded X-ray with heatmap overlay"></canvas>
+        <div class="overlay-text ot-tl" id="otTL" hidden></div>
+        <div class="overlay-text ot-tr" id="otTR" hidden></div>
+        <div class="overlay-text ot-bl" id="otBL" hidden>LAT VIEW · WEIGHT-BEARING</div>
+        <div class="overlay-text ot-br" id="otBR" hidden></div>
+      </div>
+      <div class="toolbar">
+        <label for="heatToggle"><input type="checkbox" id="heatToggle" checked> Heatmap</label>
+        <label for="heatAlpha">Opacity <input type="range" id="heatAlpha" min="0" max="80" value="45"></label>
+        <span class="spacer"></span>
+        <button class="btn" id="newBtn" type="button">Choose another X-ray</button>
+      </div>
+      <input type="file" id="file" accept="image/*" class="sr">
+    </div>
+
+    <!-- Findings -->
+    <aside class="findings" aria-live="polite">
+      <p class="eyebrow">Finding</p>
+      <div class="verdict">
+        <span class="chip" id="chip" data-kind="idle">Awaiting image</span>
+        <h2 id="verdictTitle">No X-ray analysed yet</h2>
+        <p id="verdictSub">Upload a lateral foot X-ray to get a result in about a second. Nothing is uploaded to a server: the model runs in your browser.</p>
+      </div>
+
+      <div class="meter">
+        <div class="meter-head">
+          <b id="probText">–</b>
+          <span>probability of pes planus</span>
+        </div>
+        <div class="track" aria-hidden="true">
+          <div class="band"></div>
+          <div class="tick"></div>
+          <div class="marker" id="marker" hidden></div>
+        </div>
+        <div class="scale"><span>0 normal</span><span>0.5 cut-off</span><span>1 flatfoot</span></div>
+      </div>
+
+      <p class="explain" id="explain">The hatched zone (0.35 to 0.65) marks borderline results, where a clinician's review matters most.</p>
+      <p class="note">Research prototype for education only. Not a medical device and not a diagnosis. Always consult a qualified doctor.</p>
+    </aside>
+  </div>
+
+  <div class="card-grid">
+    <section class="info">
+      <h3>How it was tested</h3>
+      <table class="metrics">
+        <tr><td>AUC</td><td>0.969 ± 0.027</td></tr>
+        <tr><td>Accuracy</td><td>0.889 ± 0.054</td></tr>
+        <tr><td>Sensitivity (flat feet caught)</td><td>0.888 ± 0.075</td></tr>
+        <tr><td>Specificity (normal feet cleared)</td><td>0.916 ± 0.058</td></tr>
+      </table>
+      <p class="muted">Mean ± standard deviation over five patient-level train / validation / test splits. Both feet of a patient were always kept in the same split, and duplicate images were removed first.</p>
+    </section>
+    <section class="info">
+      <h3>Reading the heatmap</h3>
+      <p>Red marks the region that pushed the model toward its answer. On a well-behaved result it sits on the hindfoot and midfoot: the calcaneus, talus and navicular. These are the bones used for clinical measures such as calcaneal pitch and Meary's angle.</p>
+      <p>If the red lands on a text marker, the film edge or empty background, treat the result with suspicion.</p>
+    </section>
+    <section class="info">
+      <h3>Limitations</h3>
+      <ul>
+        <li>Trained on about 540 lateral foot radiographs from a single dataset, with no external validation.</li>
+        <li>Labels were assigned per patient, so a normal foot of a patient with one-sided flatfoot may carry a flatfoot label.</li>
+        <li>Only lateral views are valid. A front view, a photo or any other image still gets an answer, and that answer is meaningless.</li>
+      </ul>
+    </section>
+  </div>
+
+  <footer>Model: ResNet-18 fine-tuned on lateral foot radiographs, exported to ONNX and run locally with ONNX Runtime Web. Images never leave your device.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+<script>
+(() => {
+  const SIZE = 224, THRESH = 0.5, BORDER = [0.35, 0.65];
+  const MEAN = [0.485, 0.456, 0.406], STD = [0.229, 0.224, 0.225];
+  const $ = (id) => document.getElementById(id);
+  let session = null, current = null;
+
+  /* ---------- model loading ---------- */
+  function setStatus(state, text) {
+    $("status").dataset.state = state;
+    $("statusText").textContent = text;
+  }
+  function showLoadError(html) {
+    const e = $("loadError"); e.innerHTML = html; e.hidden = false;
+    setStatus("error", "Model not loaded");
+  }
+
+  async function fetchWithProgress(url, onBytes) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+    if (!res.body) { const b = new Uint8Array(await res.arrayBuffer()); onBytes(b.length); return b; }
+    const reader = res.body.getReader(); const chunks = []; let n = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); n += value.length; onBytes(value.length);
+    }
+    const out = new Uint8Array(n); let o = 0;
+    for (const c of chunks) { out.set(c, o); o += c.length; }
+    return out;
+  }
+
+  async function loadModel() {
+    if (location.protocol === "file:") {
+      showLoadError("<b>Open this page through a web address.</b> Browsers block model files when index.html is opened by double-clicking. Use the GitHub Pages link, or run <code>python -m http.server</code> in this folder and open <code>http://localhost:8000</code>.");
+      return;
+    }
+    if (typeof ort === "undefined") {
+      showLoadError("<b>Could not load ONNX Runtime from jsDelivr.</b> Check your internet connection or ad blocker, then reload.");
+      return;
+    }
+    try {
+      ort.env.wasm.numThreads = 1;
+      const manifest = await (await fetch("model.json")).json();
+      const total = manifest.bytes; let got = 0;
+      const parts = [];
+      for (const p of manifest.parts) {
+        parts.push(await fetchWithProgress(p, (k) => {
+          got += k;
+          setStatus("loading", `Loading model… ${Math.round(100 * got / total)}%`);
+        }));
+      }
+      const bytes = new Uint8Array(total); let o = 0;
+      for (const p of parts) { bytes.set(p, o); o += p.length; }
+      setStatus("loading", "Starting model…");
+      session = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"] });
+      setStatus("ready", "Model ready · runs on this device");
+      if (current) analyse(current);
+    } catch (err) {
+      console.error(err);
+      showLoadError(`<b>The model files could not be loaded.</b> Make sure <code>model.json</code> and every <code>model.part*.bin</code> file sit in the same folder as index.html. Details: ${String(err.message || err).replace(/</g, "&lt;")}`);
+    }
+  }
+
+  /* ---------- image input ---------- */
+  function openPicker() { $("file").click(); }
+  $("drop").addEventListener("click", openPicker);
+  $("newBtn").addEventListener("click", openPicker);
+  $("file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ""; });
+
+  const stage = $("stage");
+  ["dragenter", "dragover"].forEach(t => stage.addEventListener(t, (e) => { e.preventDefault(); $("drop").classList.add("is-over"); }));
+  ["dragleave", "drop"].forEach(t => stage.addEventListener(t, (e) => { e.preventDefault(); $("drop").classList.remove("is-over"); }));
+  stage.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+  window.addEventListener("paste", (e) => {
+    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith("image/"));
+    if (item) loadFile(item.getAsFile());
+  });
+
+  function loadFile(file) {
+    if (!file.type.startsWith("image/")) { setVerdict("idle", "That file isn't an image", "Choose a JPG or PNG X-ray."); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { current = { img, name: file.name || "pasted image" }; showImage(); analyse(current); };
+    img.onerror = () => setVerdict("idle", "This image couldn't be opened", "Try saving it as JPG or PNG and upload it again.");
+    img.src = url;
+  }
+
+  /* ---------- inference ---------- */
+  function toTensor(img) {
+    const c = document.createElement("canvas"); c.width = c.height = SIZE;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    g.drawImage(img, 0, 0, SIZE, SIZE);
+    const d = g.getImageData(0, 0, SIZE, SIZE).data;
+    const N = SIZE * SIZE, t = new Float32Array(3 * N);
+    for (let i = 0; i < N; i++) {
+      const gray = (0.299 * d[4*i] + 0.587 * d[4*i+1] + 0.114 * d[4*i+2]) / 255;
+      t[i] = (gray - MEAN[0]) / STD[0];
+      t[N + i] = (gray - MEAN[1]) / STD[1];
+      t[2 * N + i] = (gray - MEAN[2]) / STD[2];
+    }
+    return new ort.Tensor("float32", t, [1, 3, SIZE, SIZE]);
+  }
+
+  async function analyse(item) {
+    if (!session) { setVerdict("idle", "Waiting for the model", "Your image is ready. The result appears as soon as the model finishes loading."); return; }
+    setVerdict("idle", "Analysing…", "");
+    try {
+      const out = await session.run({ image: toTensor(item.img) });
+      const p = out.prob.data[0];
+      const camRaw = out.cam.data, [h, w] = out.cam.dims.slice(-2);
+      const sign = p >= THRESH ? 1 : -1;
+      const cam = new Float32Array(h * w); let mx = 0;
+      for (let i = 0; i < cam.length; i++) { cam[i] = Math.max(0, sign * camRaw[i]); mx = Math.max(mx, cam[i]); }
+      for (let i = 0; i < cam.length; i++) cam[i] /= (mx || 1);
+      item.p = p; item.cam = cam; item.camW = w; item.camH = h;
+      render(); showResult(p);
+    } catch (err) {
+      console.error(err);
+      setVerdict("idle", "Analysis failed", String(err.message || err));
+    }
+  }
+
+  /* ---------- drawing ---------- */
+  function jet(v) {
+    const c = (x) => Math.max(0, Math.min(1, x));
+    return [c(1.5 - Math.abs(4 * v - 3)), c(1.5 - Math.abs(4 * v - 2)), c(1.5 - Math.abs(4 * v - 1))];
+  }
+  function sampleCam(cam, cw, ch, x, y, W, H) {
+    let sx = (x + 0.5) * cw / W - 0.5, sy = (y + 0.5) * ch / H - 0.5;
+    sx = Math.max(0, Math.min(cw - 1, sx)); sy = Math.max(0, Math.min(ch - 1, sy));
+    const x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(cw - 1, x0 + 1), y1 = Math.min(ch - 1, y0 + 1);
+    const fx = sx - x0, fy = sy - y0;
+    const a = cam[y0*cw+x0], b = cam[y0*cw+x1], c = cam[y1*cw+x0], d = cam[y1*cw+x1];
+    return (a*(1-fx) + b*fx) * (1-fy) + (c*(1-fx) + d*fx) * fy;
+  }
+
+  function showImage() {
+    $("drop").hidden = true; $("view").hidden = false;
+    ["otTL", "otTR", "otBL", "otBR"].forEach(id => $(id).hidden = false);
+    render();
+  }
+
+  function render() {
+    if (!current) return;
+    const img = current.img, maxW = 1000;
+    const scale = Math.min(1, maxW / img.naturalWidth);
+    const W = Math.round(img.naturalWidth * scale), H = Math.round(img.naturalHeight * scale);
+    const cv = $("view"); cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+    g.filter = "grayscale(1)"; g.drawImage(img, 0, 0, W, H); g.filter = "none";
+    if (current.cam && $("heatToggle").checked) {
+      const alpha = $("heatAlpha").value / 100;
+      const base = g.getImageData(0, 0, W, H), px = base.data;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const v = sampleCam(current.cam, current.camW, current.camH, x, y, W, H);
+        const [r, gg, b] = jet(v); const k = 4 * (y * W + x);
+        px[k]   = px[k]   * (1 - alpha) + r * 255 * alpha;
+        px[k+1] = px[k+1] * (1 - alpha) + gg * 255 * alpha;
+        px[k+2] = px[k+2] * (1 - alpha) + b * 255 * alpha;
+      }
+      g.putImageData(base, 0, 0);
+    }
+    $("otTL").textContent = current.name.length > 34 ? current.name.slice(0, 31) + "…" : current.name;
+    $("otTR").textContent = `${img.naturalWidth} × ${img.naturalHeight}px\nmodel input ${SIZE} × ${SIZE}`;
+    $("otTR").style.whiteSpace = "pre";
+    $("otBR").textContent = current.p == null ? "" : `p(pes planus) = ${current.p.toFixed(3)}`;
+  }
+  $("heatToggle").addEventListener("change", render);
+  $("heatAlpha").addEventListener("input", render);
+
+  /* ---------- findings panel ---------- */
+  function setVerdict(kind, title, sub) {
+    $("chip").dataset.kind = kind;
+    $("chip").textContent = { idle: "Awaiting result", flat: "Pes planus likely", normal: "Normal arch likely", border: "Borderline" }[kind];
+    $("verdictTitle").textContent = title; $("verdictSub").textContent = sub;
+    if (kind === "idle") { $("probText").textContent = "–"; $("marker").hidden = true; }
+  }
+  function showResult(p) {
+    const border = p >= BORDER[0] && p <= BORDER[1];
+    const flat = p >= THRESH;
+    const conf = (flat ? p : 1 - p) * 100;
+    if (border) {
+      setVerdict("border", flat ? "Borderline, leaning flatfoot" : "Borderline, leaning normal",
+        `The model is unsure (${conf.toFixed(0)}% for its answer). This X-ray needs a clinician's review.`);
+    } else if (flat) {
+      setVerdict("flat", "Pes planus likely", `The model is ${conf.toFixed(1)}% confident this foot has a lowered arch.`);
+    } else {
+      setVerdict("normal", "Normal arch likely", `The model is ${conf.toFixed(1)}% confident this foot has a normal arch.`);
+    }
+    $("probText").textContent = p.toFixed(3);
+    $("marker").hidden = false; $("marker").style.left = `${(p * 100).toFixed(1)}%`;
+    $("explain").textContent = "Check the heatmap: the red should sit on the heel and midfoot bones. If it lands on a text marker or empty background, don't trust this result.";
+  }
+
+  loadModel();
+})();
+</script>
+</body>
+</html>
