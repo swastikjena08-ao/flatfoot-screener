@@ -17,7 +17,7 @@ DATASET_ID = "85e73c3b2f9141138d9885732030f624"
 LIST_URL = f"https://www.scidb.cn/api/sdb-filetree-service/getAllUrl?dataSetId={DATASET_ID}&version=V5"
 
 
-def fetch(url, dest, tries=4):
+def fetch(url, dest, tries=8):
     if os.path.exists(dest) and os.path.getsize(dest) > 0:
         return True
     os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -27,15 +27,16 @@ def fetch(url, dest, tries=4):
                 f.write(r.read())
             os.replace(dest + ".part", dest)
             return True
-        except Exception:
-            time.sleep(2 * (i + 1))
+        except Exception as e:
+            # the server answers 429 when hit too hard; back off longer then
+            time.sleep((30 if getattr(e, "code", None) == 429 else 2) * (i + 1))
     return False
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="data/hvangleest")
-    ap.add_argument("--workers", type=int, default=16)
+    ap.add_argument("--workers", type=int, default=4)
     a = ap.parse_args()
 
     with urllib.request.urlopen(LIST_URL, timeout=120) as r:
