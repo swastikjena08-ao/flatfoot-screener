@@ -1,0 +1,17 @@
+{
+  "footfinder_test": {
+    "n": 140,
+    "side_acc": 1.0,
+    "iou_mean": 0.9227932691574097,
+    "iou_min": 0.6843964457511902,
+    "iou_over_0_8": 0.975
+  },
+  "end_to_end_test_official": {
+    "n": 160,
+    "missed_feet": 0,
+    "hva_mae": 1.7253402467430128,
+    "ima_mae": 1.1709284491609435,
+    "hva_within3": 0.84375,
+    "ima_within3": 0.94375
+  }
+}

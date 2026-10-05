@@ -55,6 +55,23 @@ def heatmap_targets(pts, h, w, sigma=1.5):
     return g / g.sum((-1, -2), keepdim=True).clamp_min(1e-8)
 
 
+def acute_deg(v1, v2):
+    """Acute angle in degrees between direction vectors (..., 2), like common.line_angle but differentiable."""
+    cross = v1[..., 0] * v2[..., 1] - v1[..., 1] * v2[..., 0]
+    dot = (v1 * v2).sum(-1)
+    return torch.rad2deg(torch.atan2(cross.abs() + 1e-6, dot.abs()))
+
+
+def angle_loss(p, y):
+    """HVA/IMA error plus per-line direction error, in degrees."""
+    d_p = p[:, 1::2] - p[:, 0::2]  # (B, 3, 2) line vectors: toe, met1, met2
+    d_y = y[:, 1::2] - y[:, 0::2]
+    # errors are capped at 15 deg so a badly placed line early in training can't blow up the gradients
+    e_ang = (acute_deg(d_p[:, :2], d_p[:, 1:]) - acute_deg(d_y[:, :2], d_y[:, 1:])).abs().clamp(max=15)
+    e_dir = acute_deg(d_p, d_y).clamp(max=15)
+    return e_ang.mean() + e_dir.mean()
+
+
 @torch.no_grad()
 def predict(model, imgs, bs=32):
     model.eval()
@@ -85,6 +102,7 @@ def main():
     ap.add_argument("--bs", type=int, default=16)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--limit", type=int, default=0, help="train on only this many feet (smoke test)")
+    ap.add_argument("--angle_w", type=float, default=0.0, help="weight of the HVA/IMA + line-direction loss (degrees)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     torch.manual_seed(0)
@@ -121,8 +139,14 @@ def main():
             logp = F.log_softmax(logits.flatten(2), -1)
             l_hm = -(heatmap_targets(y, hm_h, hm_w).flatten(2) * logp).sum(-1).mean()
             loss = l_pts + 0.5 * l_hm
+            # angle loss fades in over epochs 11-20, after the points have settled
+            w_ang = a.angle_w * min(max((ep - 10) / 10, 0.0), 1.0)
+            if w_ang:
+                loss = loss + w_ang * angle_loss(p, y)
             opt.zero_grad()
             loss.backward()
+            if w_ang:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             opt.step()
             sched.step()
             tot += loss.item() * len(idx)

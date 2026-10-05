@@ -44,9 +44,32 @@ and test scores. Open it in Colab with a GPU runtime and run all cells.
 Second pass: `zoom_prep.py` crops the forefoot around the first-pass points
 from the original X-ray, and the same `train.py` / `evaluate.py` run on it.
 
+`train.py --angle_w 0.3` adds a loss on the HVA/IMA angles and each bone line's
+direction (fades in over epochs 11-20). On a local GTX 1650 (ResNet-34,
+320x640, 60 epochs, `--bs 8`) it lifted HVA within 3° from 81.9% to 83.8% on
+the official test set (`results/pass1_angle_gpu`).
+
+## Foot finder
+
+`footfinder.py` finds the left and/or right foot in a whole X-ray (ResNet-18,
+input letterboxed to 320x512), so new X-rays don't need hand-drawn boxes.
+
+```
+python footfinder.py prep  --data /path/to/hvangleest --out work/feet.npz
+python footfinder.py train --cache work/feet.npz --out work/footfinder
+python footfinder.py eval  --cache work/feet.npz --ckpt work/footfinder/best.pt --data /path/to/hvangleest \
+                           --bunion-cache work/cache.npz --bunion-ckpt work/run/best.pt --out work/footfinder
+```
+
+`eval` scores the boxes, then runs the bunion model on foot-finder crops and
+exports `footfinder.onnx` (outputs: boxes `(1, 2, 4)` for left/right in input
+pixels, and presence probabilities). Test results (`results/footfinder`):
+left/right correct on all 140 test X-rays, mean box IoU 0.92, and end to end
+HVA 84.4% / IMA 94.4% within 3°, the same as with the dataset's boxes.
+
 ## Notes
 
 - The official split puts 42 patients in both train and test, so we also score
   test feet whose patients are not in train.
-- The model expects a foot crop. The dataset's foot boxes are used for now; a
-  foot finder is still needed for new X-rays.
+- The bunion model expects a foot crop (left feet mirrored); for new X-rays,
+  take the crop from the foot finder's box.
