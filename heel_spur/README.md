@@ -26,3 +26,16 @@ python export.py --locate work/locate/best.pt --classify work/classify/best.pt -
 ```
 
 `prep.py` splits 70/15/15 by class with a fixed seed and keeps near-identical images (same perceptual hash) in one split. `train.py` uses the GPU when one is available (`--device cpu` to force CPU). `evaluate.py` crops with the heel finder's box, as the app would, and also reports the score with the hand-drawn box for comparison.
+
+## Use in the app
+
+`predict.py` runs the exported models with onnxruntime only (no PyTorch), the same way `flatfoot_app.py` does:
+
+```python
+from heel_spur.predict import HeelSpur
+hs = HeelSpur("flatfoot_app")      # heel_finder.onnx, heel_spur.onnx, heel_spur.json
+r = hs.predict(Image.open("xray.jpg"))
+r["label"], r["probs"], r["box"], r["heatmap"], r["crop_box"]
+```
+
+`predict_check.py` confirms the ONNX pipeline matches the PyTorch evaluation on test X-rays.
