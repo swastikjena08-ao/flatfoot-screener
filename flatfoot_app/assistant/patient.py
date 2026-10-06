@@ -96,6 +96,7 @@ class PatientPage(QWidget):
         main.setSpacing(16)
         self.drawer = Drawer()
         self.drawer.picked.connect(self.show_xray)
+        self.drawer.remove_clicked.connect(self.delete_xray)
         self.drawer.add_clicked.connect(self.add_xray)
         self.drawer.reset_clicked.connect(self.reset_points)
         self.drawer.canvas.points_edited.connect(self.points_edited)
@@ -325,15 +326,10 @@ class PatientPage(QWidget):
         again.setEnabled(x["id"] not in self.busy)
         row.addWidget(again)
         self.xray_lay.addLayout(row)
-        row = QHBoxLayout()
         save = button("Save marked X-ray", "ghost", self.save_marked,
                       tip="Save the X-ray with its points, lines and findings drawn on")
         save.setEnabled(bool(x["results"]) and x["id"] not in self.busy)
-        row.addWidget(save)
-        delete = button("Delete X-ray", "danger", self.delete_xray)
-        delete.setEnabled(x["id"] not in self.busy)
-        row.addWidget(delete)
-        self.xray_lay.addLayout(row)
+        self.xray_lay.addWidget(save)
 
     # ---------- actions ----------
 
@@ -431,9 +427,13 @@ class PatientPage(QWidget):
         self.show_xray_card()
         return path
 
-    def delete_xray(self, confirm=True):
-        x = self.current
+    def delete_xray(self, xray_id=None, confirm=True):
+        """The × on an X-ray's thumbnail: asks, then removes it and its results from this PC."""
+        x = self.store.xray(xray_id) if xray_id else self.current
         if x is None:
+            return
+        if x["id"] in self.busy:
+            QMessageBox.information(self, "Still checking", "Wait for the check on this X-ray to finish, then delete it.")
             return
         if confirm:
             ask = QMessageBox.question(self, "Delete X-ray",
@@ -442,7 +442,8 @@ class PatientPage(QWidget):
             if ask != QMessageBox.Yes:
                 return
         self.store.delete_xray(self.user["id"], x["id"])
-        self.current = None
+        if self.current and self.current["id"] == x["id"]:
+            self.current = None
         self.reload()
         self.changed.emit()
 

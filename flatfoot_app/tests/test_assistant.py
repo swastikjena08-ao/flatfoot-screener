@@ -293,6 +293,27 @@ def test_save_marked_delete_and_dark_mode(window, tmp_path):
     assert w.store.xrays(p["id"]) == [] and w.patient.current is None
 
 
+def test_thumbnail_cross_deletes_that_xray(window, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    a = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    b = w.store.add_xray(u["id"], p["id"], str(src), "top", "left")
+    w.open_patient(p["id"])
+    thumbs = {t.xray_id: t for t in w.patient.drawer._thumb_buttons}
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
+    thumbs[a["id"]].close_btn.click()
+    assert len(w.store.xrays(p["id"])) == 2          # said no
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    thumbs[a["id"]].close_btn.click()
+    assert [x["id"] for x in w.store.xrays(p["id"])] == [b["id"]]
+    assert [t.xray_id for t in w.patient.drawer._thumb_buttons] == [b["id"]]
+
+
 def test_results_wait_for_a_full_scan(window, tmp_path):
     from assistant import patient as patient_page
     w = window

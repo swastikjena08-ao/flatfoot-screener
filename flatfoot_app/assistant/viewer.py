@@ -407,6 +407,8 @@ class XrayCanvas(QWidget):
 
 
 class Thumb(QPushButton):
+    removed = Signal(int)
+
     def __init__(self, xray_id, pix, caption):
         super().__init__()
         self.xray_id = xray_id
@@ -425,11 +427,24 @@ class Thumb(QPushButton):
         cap.setStyleSheet("background: transparent; border: none; font-size: 10px;")
         lay.addWidget(img)
         lay.addWidget(cap)
+        self.close_btn = QPushButton("×", self)
+        self.close_btn.setObjectName("thumbx")
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setToolTip("Delete this X-ray")
+        self.close_btn.setFixedSize(22, 22)
+        self.close_btn.move(self.width() - 26, 4)
+        self.close_btn.setStyleSheet(
+            "QPushButton#thumbx { min-height: 22px; max-height: 22px; padding: 0; border-radius: 11px;"
+            " background: rgba(2,4,7,0.85); color: #dcf3ff; border: 1px solid rgba(110,205,255,0.45);"
+            " font-size: 14px; font-weight: 700; }"
+            " QPushButton#thumbx:hover { background: #ff6b78; color: #020407; border-color: #ff6b78; }")
+        self.close_btn.clicked.connect(lambda: self.removed.emit(self.xray_id))
 
 
 class Drawer(QFrame):
     """Black lightbox: toolbar, canvas and the X-ray strip."""
     picked = Signal(int)
+    remove_clicked = Signal(int)
     add_clicked = Signal()
     reset_clicked = Signal()
 
@@ -530,6 +545,7 @@ class Drawer(QFrame):
         for xid, pix, cap in items:
             t = Thumb(xid, pix, cap)
             t.clicked.connect(lambda _=False, i=xid: self.picked.emit(i))
+            t.removed.connect(self.remove_clicked)
             set_on(t, xid == current)
             self.thumbs.addWidget(t)
             self._thumb_buttons.append(t)
