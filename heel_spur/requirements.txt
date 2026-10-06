@@ -1,0 +1,10 @@
+numpy
+pandas
+pillow
+imagehash
+opencv-python-headless
+scikit-learn
+torch
+torchvision
+onnx
+onnxruntime
