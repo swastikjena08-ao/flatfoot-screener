@@ -20,7 +20,7 @@ pip install -r requirements.txt
 python download.py --out D:/heel-spur
 python prep.py --data D:/heel-spur --split work/split.csv --out work/cache.npz
 python train.py --task classify --cache work/cache.npz --init ../flatfoot_app/model.onnx --out work/classify
-python train.py --task locate   --cache work/cache.npz --init ../flatfoot_app/model.onnx --out work/locate
+python train.py --task locate   --cache work/cache.npz --init ../flatfoot_app/model.onnx --out work/locate --epochs 30
 python evaluate.py --data D:/heel-spur --split work/split.csv --locate work/locate/best.pt --classify work/classify/best.pt --out work/eval
 python export.py --locate work/locate/best.pt --classify work/classify/best.pt --out ../flatfoot_app
 ```
