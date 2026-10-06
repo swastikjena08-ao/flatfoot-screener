@@ -225,3 +225,18 @@ def test_patient_page_and_report(window, tmp_path):
     assert json.loads(w.store.xray(x["id"])["edits"]) == {}
     w.go_home()
     assert w.home.rows.count() >= 1
+
+
+def test_named_foot_still_uses_foot_finder(eng, monkeypatch):
+    if not eng.ready("bunion"):
+        pytest.skip("bunion models not installed in models/bunion")
+    seen = {}
+    monkeypatch.setattr(eng.bunion, "finder", object())
+    monkeypatch.setattr(eng.bunion, "find_feet", lambda g: {"left": (10.0, 20.0, 150.0, 480.0)})
+    monkeypatch.setattr(eng.bunion, "predict", lambda g, boxes: seen.update(boxes) or [])
+    img = Image.fromarray(np.zeros((500, 300), np.uint8))
+    eng.analyse(img, "top", "left")
+    assert seen == {"left": (10.0, 20.0, 150.0, 480.0)}
+    seen.clear()
+    eng.analyse(img, "top", "right")      # only one foot found: measure it as the foot named
+    assert seen == {"right": (10.0, 20.0, 150.0, 480.0)}
