@@ -170,15 +170,53 @@ def analyse_xray(img, side, session, landmarks):
         left = side == LEFT_SIDE
         how = "set by you" if side != AUTO_SIDE else "assumed (landmark model not found)"
     work = mirror(img) if left else img
-    p, cam = analyse(session, work)
+    if landmarks is not None and pts is None:
+        pts, _ = landmarks.predict(work)
+    if pts is not None:
+        # Classify the foot only, framed like the training X-rays, so a calibration ball,
+        # the other leg or a long shin can't sway the verdict or pull the heatmap off the foot.
+        box = foot_box(pts, work.size)
+        p, cam = analyse(session, work.crop(box))
+        cam = cam_on_image(cam, box, *work.size)
+    else:
+        p, cam = analyse(session, work)
     if left:
         cam = cam[:, ::-1]
-    if landmarks is not None:
-        if pts is None:
-            pts, _ = landmarks.predict(work)
-        if left:
-            pts = {k: (img.width - 1 - x, y) for k, (x, y) in pts.items()}
+        pts = {k: (img.width - 1 - x, y) for k, (x, y) in pts.items()} if pts else pts
     return Analysis(p, cam, pts, left, how)
+
+
+def foot_box(pts, size):
+    """Crop (x0, y0, x1, y1) that frames the foot like the Pesplanus training X-rays.
+
+    In those, measured on the 163 hand-labelled ones, the L10–L11 line's midpoint sits 76%
+    across and 83% down, and the image is about 8 line-lengths wide and 5.4 tall.
+    Parts outside the X-ray come out black, like the training images' borders.
+    """
+    (x1, y1), (x2, y2) = pts["L10"], pts["L11"]
+    d = max(math.hypot(x2 - x1, y2 - y1), 0.02 * max(size))
+    mx, my, w, h = (x1 + x2) / 2, (y1 + y2) / 2, 8 * d, 5.4 * d
+    return tuple(round(v) for v in (mx - 0.76 * w, my - 0.83 * h, mx + 0.24 * w, my + 0.17 * h))
+
+
+def cam_on_image(cam, box, w, h, grid=64):
+    """Place a heatmap computed on crop `box` onto a coarse grid over the whole w x h image
+    (zero outside the crop), so callers can keep stretching it over the full X-ray."""
+    s = grid / max(w, h)
+    gw, gh = max(2, round(w * s)), max(2, round(h * s))
+    ch, cw = cam.shape
+    x0, y0, x1, y1 = box
+    xs = ((np.arange(gw) + 0.5) / s - x0) / (x1 - x0)  # cell centres, 0..1 inside the crop
+    ys = ((np.arange(gh) + 0.5) / s - y0) / (y1 - y0)
+    inside = ((ys >= 0) & (ys <= 1))[:, None] & ((xs >= 0) & (xs <= 1))[None, :]
+    sx = np.clip(xs * cw - 0.5, 0, cw - 1)
+    sy = np.clip(ys * ch - 0.5, 0, ch - 1)
+    ix0, iy0 = np.floor(sx).astype(int), np.floor(sy).astype(int)
+    ix1, iy1 = np.minimum(cw - 1, ix0 + 1), np.minimum(ch - 1, iy0 + 1)
+    fx, fy = (sx - ix0)[None, :], (sy - iy0)[:, None]
+    out = ((cam[np.ix_(iy0, ix0)] * (1 - fx) + cam[np.ix_(iy0, ix1)] * fx) * (1 - fy)
+           + (cam[np.ix_(iy1, ix0)] * (1 - fx) + cam[np.ix_(iy1, ix1)] * fx) * fy)
+    return np.where(inside, out, 0).astype(np.float32)
 
 
 # ---------- drawing ----------
