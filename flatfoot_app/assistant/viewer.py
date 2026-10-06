@@ -77,6 +77,7 @@ class XrayCanvas(QWidget):
         self.tool = None         # None (move points), "pen" or "note"
         self.pen_colour = PEN_COLOURS[0]
         self._stroke = None
+        self._note_drag = None   # [index, press position, moved yet]
         self._scan = None
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -206,6 +207,12 @@ class XrayCanvas(QWidget):
     def mousePressEvent(self, e):
         if e.button() != Qt.LeftButton or self.pix is None:
             return
+        i = self._hit_note(e.position()) if self.show_marks else None
+        if i is not None:
+            # a note pin: drag to move it, or a plain click to edit its text (on release)
+            self._note_drag = [i, e.position(), False]
+            self.setCursor(Qt.ClosedHandCursor)
+            return
         if self.tool == "pen":
             self.show_marks = True
             self._stroke = {"c": self.pen_colour, "w": 3.0 / self._scale(), "pts": [self.to_image(e.position())]}
@@ -214,9 +221,8 @@ class XrayCanvas(QWidget):
             return
         if self.tool == "note":
             self.show_marks = True
-            i = self._hit_note(e.position())
             x, y = self.to_image(e.position())
-            self.note_clicked.emit(-1 if i is None else i, x, y)
+            self.note_clicked.emit(-1, x, y)
             return
         self._drag = self._hit(e.position())
         if self._drag is None and self.zoom > 1:
@@ -224,7 +230,15 @@ class XrayCanvas(QWidget):
             self.setCursor(Qt.ClosedHandCursor)
 
     def mouseMoveEvent(self, e):
-        if self._stroke is not None:
+        if self._note_drag is not None:
+            i, start, moved = self._note_drag
+            d = e.position() - start
+            if moved or d.x() ** 2 + d.y() ** 2 > 16:
+                self._note_drag[2] = True
+                x, y = self.to_image(e.position())
+                self.marks["notes"][i].update(x=round(x, 1), y=round(y, 1))
+                self.update()
+        elif self._stroke is not None:
             self._stroke["pts"].append(self.to_image(e.position()))
             self.update()
         elif self._drag:
@@ -239,10 +253,22 @@ class XrayCanvas(QWidget):
             start, pan = self._pan_from
             self.pan = pan + (e.position() - start)
             self.update()
-        elif self.pix is not None and not self.tool:
-            self.setCursor(Qt.OpenHandCursor if self._hit(e.position()) else Qt.ArrowCursor)
+        elif self.pix is not None:
+            over = (self.show_marks and self._hit_note(e.position()) is not None) or \
+                (not self.tool and self._hit(e.position()))
+            self.setCursor(Qt.OpenHandCursor if over else Qt.CrossCursor if self.tool else Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, e):
+        if self._note_drag is not None:
+            i, _, moved = self._note_drag
+            self._note_drag = None
+            self.setCursor(Qt.OpenHandCursor)
+            if moved:
+                self.marks_changed.emit(self.marks)
+            else:
+                n = self.marks["notes"][i]
+                self.note_clicked.emit(i, n["x"], n["y"])
+            return
         if self._stroke is not None:
             st = self._stroke
             self._stroke = None

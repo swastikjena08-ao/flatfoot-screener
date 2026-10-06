@@ -381,3 +381,41 @@ def test_pen_and_note_marks_are_saved_and_reported(window, tmp_path, monkeypatch
     monkeypatch.setattr(QInputDialog, "textValue", lambda self: "")
     w.patient.note_clicked(0, 0, 0)                                   # empty text deletes the note
     assert json.loads(w.store.xray(x["id"])["marks"])["notes"] == []
+
+
+def test_note_pins_can_be_dragged_and_still_clicked(window, tmp_path, monkeypatch):
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QInputDialog
+    monkeypatch.setattr(QInputDialog, "exec", lambda self: False)      # editor opens, then cancelled
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    x = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    w.store.save_results(x["id"], _side_results(), "right")
+    w.store.save_marks(u["id"], x["id"], {"strokes": [], "notes": [{"x": 100.0, "y": 100.0, "text": "Porous bone"}]})
+    w.open_patient(p["id"])
+    c = w.patient.drawer.canvas
+    c.resize(800, 600)
+    clicks = []
+    c.note_clicked.connect(lambda i, nx, ny: clicks.append(i))
+
+    def mouse(kind, ix, iy):
+        pos = c.to_widget(ix, iy)
+        c.event(QMouseEvent(kind, pos, pos, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+
+    for tool in (None, "note"):
+        c.set_tool(tool)
+        mouse(QEvent.MouseButtonPress, 100, 100)                       # plain click opens the editor
+        mouse(QEvent.MouseButtonRelease, 100, 100)
+    assert clicks == [0, 0]
+    clicks.clear()
+    mouse(QEvent.MouseButtonPress, 100, 100)                           # drag moves the pin, no editor
+    mouse(QEvent.MouseMove, 200, 150)
+    mouse(QEvent.MouseButtonRelease, 250, 200)
+    assert clicks == []
+    n = json.loads(w.store.xray(x["id"])["marks"])["notes"][0]
+    assert n["text"] == "Porous bone" and abs(n["x"] - 200) < 2 and abs(n["y"] - 150) < 2
