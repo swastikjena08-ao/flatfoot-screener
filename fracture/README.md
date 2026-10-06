@@ -34,4 +34,11 @@ python evaluate.py --cache work/cache.npz --model work/run/best.pt --out work/ru
 
 ## Results
 
-See `results/`.
+CPU run (`results/cpu_384/`): 384 px, 20 rounds, best round 14 by validation score. Flag threshold set on validation to catch 90% of its fractures.
+
+| test split | X-rays | fractured | AUC | fractures flagged | normals cleared | points at break |
+|---|---|---|---|---|---|---|
+| all leg | 470 | 50 | 0.86 | 80% | 66% | 48% |
+| foot and ankle | 192 | 16 | 0.55 | 50% | 59% | 19% |
+
+Found: shin and thigh 25/27, lower shin 7/7, ankle 3/4, **foot 5/12**. The model learned long-bone breaks but not foot breaks: only 11 foot fractures landed in the training split (12 in test), and small toe and metatarsal breaks shrink to a few pixels at 384 px. Not usable for feet yet.
