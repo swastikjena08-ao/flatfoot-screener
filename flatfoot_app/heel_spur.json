@@ -1,0 +1,10 @@
+{
+  "classes": [
+    "normal",
+    "spur",
+    "sever"
+  ],
+  "finder_size": 256,
+  "crop_size": 224,
+  "crop_pad": 1.6
+}
