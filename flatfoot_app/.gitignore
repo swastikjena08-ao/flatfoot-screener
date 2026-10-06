@@ -12,3 +12,9 @@ __pycache__/
 # local backups and tooling output
 *.bak
 graphify-out/
+
+# bunion model weights: trained on HVAngleEst (CC BY-NC-ND 4.0), copied in by hand, never committed
+models/bunion/*.onnx
+
+# local app data when run with --data-dir inside the repo
+app-data/
