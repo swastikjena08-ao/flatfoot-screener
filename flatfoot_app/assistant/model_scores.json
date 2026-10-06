@@ -1,0 +1,35 @@
+{
+ "flat": {
+  "set": "Pesplanus X-rays from patients never used in training labels",
+  "n": 211,
+  "angle_matches_folder": 0.9383886255924171,
+  "by_folder": {
+   "flat": 0.9405940594059405,
+   "normal": 0.8888888888888888
+  },
+  "n_flat": 202,
+  "n_normal": 9,
+  "line": "Test score: angle matched the expert folder on 93.8% of 211 X-rays from patients never used in training (flat feet 94.1% of 202)."
+ },
+ "spur": {
+  "set": "Kaggle Heel Dataset test split (prep.py, seed 0)",
+  "n": 595,
+  "accuracy_3class": 0.9747899159663865,
+  "spur_vs_normal_auc": 0.996740951132474,
+  "spurs_caught": 0.9597989949748744,
+  "n_spur": 199,
+  "normal_cleared": 0.9818840579710145,
+  "n_normal": 276,
+  "line": "Test score: 97.5% correct on 595 held-out heel X-rays; 96.0% of 199 spurs caught, 98.2% of 276 normal heels cleared."
+ },
+ "bunion": {
+  "set": "HVAngleEst official test split (dataset foot boxes)",
+  "n": 160,
+  "hva_within3": 0.85,
+  "ima_within3": 0.95625,
+  "hva_mae": 1.7810855764878013,
+  "ima_mae": 1.1185819685125507,
+  "line": "Test score on 160 held-out feet: HVA within 3\u00b0 on 85.0%, IMA on 95.6% (mean error 1.8\u00b0 / 1.1\u00b0)."
+ },
+ "note": "Measured with tools/check_models.py through the app's own engine (assistant/engine.py), Oct 6 2026."
+}

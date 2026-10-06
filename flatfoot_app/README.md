@@ -106,6 +106,49 @@ pyinstaller --noconfirm --onefile --windowed --name "Flatfoot Screener" ^
 
 The executable is written to `dist\Flatfoot Screener.exe` (about 180 MB). It's larger than GitHub's 100 MB file limit, so publish it as a **Release asset** rather than committing it.
 
+## Foot X-ray assistant (doctor accounts and patients)
+
+`foot_assistant.py` is the full clinic app built on the same models: doctor sign-in, patient profiles, and three checks per patient.
+
+```
+pip install -r requirements.txt
+python foot_assistant.py            # data in %APPDATA%\Foot X-ray Assistant
+python foot_assistant.py --data-dir D:\clinic-data
+```
+
+**Accounts.** A new doctor account needs a one-time activation key (`FXA-XXXX-XXXX-XXXX-XXXX`). Each key works once per PC. Doctors then sign in with their ID and password (at least 8 characters, letters plus numbers or symbols; stored as PBKDF2-SHA256 hashes). Five wrong passwords lock the account for 60 seconds, and the app signs out after 20 minutes without use. A signed-in doctor can add assistant accounts in Settings: assistants can add patients and X-rays but can't sign off reports.
+
+Make keys with `python tools/make_keys.py 10 --out keys.txt`. Only the keys' SHA-256 hashes go into `assistant/activation_keys.json` (shipped with the app); keep `keys.txt` private and never commit it.
+
+**Patients.** The doctor or assistant creates a patient with the clinic's own Patient ID (unique), name, sex, date of birth, phone and notes. X-rays added to a patient are copied into the data folder, and every result, hand correction, note, flag and sign-off is saved in `assistant.db` (SQLite) on that PC.
+
+**Checks.** Pick the view when adding an X-ray:
+
+| View | Model | What you get |
+|---|---|---|
+| Side | `model.onnx` + `landmarks.onnx` | Calcaneal pitch (drag L10/L11 to correct), flat foot under 17.7°, high arch flag over 30°, heatmap |
+| Side | `heel_finder.onnx` + `heel_spur.onnx` | Spur / normal / child's heel (Sever's) with the heel box and heatmap |
+| Top-down | `models/bunion/*.onnx` | HVA and IMA per foot (drag the 6 points to correct) |
+
+Test scores of the app's own pipeline are in `assistant/model_scores.json` and shown in the app; `tools/check_models.py` recomputes them from the datasets.
+
+**Bunion models.** They were trained on HVAngleEst (CC BY-NC-ND 4.0), so the weights are not in this repository. Copy `bunion_points.onnx` (first pass) and `bunion_zoom.onnx` (zoomed pass) into `models/bunion/`, plus `footfinder.onnx` if you have it. Without the foot finder you pick left or right and the whole X-ray is measured as that foot; with it, both feet on one X-ray are found and measured.
+
+**Build the assistant .exe.**
+
+```
+pip install pyinstaller
+pyinstaller --noconfirm --onedir --windowed --name "Foot X-ray Assistant" ^
+  --paths .. --hidden-import heel_spur.predict --hidden-import bunion.predict ^
+  --add-data "model.onnx;." --add-data "landmarks.onnx;." --add-data "landmarks.json;." ^
+  --add-data "heel_finder.onnx;." --add-data "heel_spur.onnx;." --add-data "heel_spur.json;." ^
+  --add-data "models/bunion;models/bunion" --add-data "assistant/assets;assistant/assets" ^
+  --add-data "assistant/activation_keys.json;assistant" --add-data "assistant/model_scores.json;assistant" ^
+  foot_assistant.py
+```
+
+The app is written to `dist\Foot X-ray Assistant\`. Patient data stays in the data folder, not next to the .exe, so a rebuilt app keeps every patient.
+
 ## Project structure
 
 ```
