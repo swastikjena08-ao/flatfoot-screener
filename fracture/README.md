@@ -1,0 +1,37 @@
+# Fracture flag
+
+Looks at a foot or ankle X-ray and gives **a fracture probability** plus **a 12x12 map of where the break most likely is**, so the doctor's eye goes straight to it. The doctor still decides.
+
+One ResNet-18, started from the flat foot classifier in `../flatfoot_app/model.onnx`. Its last feature map (12x12 at 384 px) goes through a 1x1 conv that scores every cell for "fracture here"; the image score is a soft maximum over the cells. Training uses both the yes/no label and the fracture boxes drawn in FracAtlas.
+
+## Data
+
+FracAtlas (Abedeen et al., *Scientific Data* 10, 521, 2023; figshare 22363012, CC BY 4.0): 4,083 X-rays from three hospitals in Bangladesh, 717 fractured, with a box around every fracture. Its body regions are only hand / leg / hip / shoulder, so `leg_region_labels.csv` sorts the 2,273 leg images by hand (by eye from thumbnails, not checked by a doctor):
+
+| | fractured | not fractured |
+|---|---|---|
+| foot (toes, metatarsals, midfoot) | 27 | |
+| ankle (at the joint) | 42 | |
+| lower shin, just above the ankle | 46 | |
+| foot or ankle view | | 870 |
+| rest of the leg | 148 | 1,140 |
+
+All leg images are used for training (a shin break still teaches what a break looks like); the number that matters is the foot and ankle part of the test split. Only 69 foot/ankle fractures exist in total, so test scores rest on a handful of X-rays. The images are not in this repo.
+
+## Run
+
+```
+pip install -r requirements.txt
+python download.py --out D:/fracatlas
+python prep.py --data D:/fracatlas/FracAtlas --split work/split.csv --out work/cache.npz
+python train.py --cache work/cache.npz --init ../flatfoot_app/model.onnx --out work/run
+python evaluate.py --cache work/cache.npz --model work/run/best.pt --out work/run --overlays work/overlays
+```
+
+`prep.py` splits 65/15/20. FracAtlas has no patient ids, so it keeps blocks of 10 consecutive image ids (views of one patient sit next to each other) and near-identical copies (same perceptual hash) in one split. `train.py` uses the GPU when one is available. `evaluate.py` picks the flag threshold on the validation split (catch 90% of its fractures) and reports the test split; "points at break" means the hottest cell overlaps a drawn fracture box.
+
+`train_colab.ipynb` reruns everything on a Colab GPU at 512 px for 40 rounds.
+
+## Results
+
+See `results/`.
