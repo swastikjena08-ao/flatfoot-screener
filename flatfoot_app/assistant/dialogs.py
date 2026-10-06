@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 
-from PySide6.QtCore import QMarginsF, QUrl
+from PySide6.QtCore import QMarginsF, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication, QPageLayout, QPageSize, QPdfWriter, QTextDocument
 from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDialog, QFileDialog, QHBoxLayout, QPlainTextEdit,
                                QRadioButton, QScrollArea, QVBoxLayout, QWidget)
@@ -11,7 +11,7 @@ from PIL import Image
 
 import flatfoot_app as ff
 
-from . import engine
+from . import engine, theme
 from .store import StoreError
 from .widgets import button, card, chip, clear_layout, field, label, line_edit
 
@@ -238,6 +238,8 @@ def write_pdf(path, text):
 
 
 class SettingsDialog(Dialog):
+    toggle_theme = Signal()
+
     def __init__(self, parent, store, user, eng, scores):
         super().__init__(parent, "Settings", width=640)
         self.store, self.user = store, user
@@ -250,6 +252,14 @@ class SettingsDialog(Dialog):
         scroll.setWidget(body)
         scroll.setMinimumHeight(520)
         self.lay.addWidget(scroll)
+
+        box, lay = card()
+        lay.addWidget(label("Look", h2=True))
+        lay.addWidget(label("Dark mode turns the app dark; the X-ray viewer stays black either way.", muted=True, wrap=True))
+        self.theme_btn = button("Switch to light mode" if theme.MODE == "dark" else "Switch to dark mode", "ghost",
+                                self._toggle_theme)
+        lay.addWidget(self.theme_btn)
+        b.addWidget(box)
 
         box, lay = card()
         lay.addWidget(label("Your password", h2=True))
@@ -311,6 +321,10 @@ class SettingsDialog(Dialog):
         row.addStretch(1)
         row.addWidget(button("Close", "ghost", self.accept))
         self.lay.addLayout(row)
+
+    def _toggle_theme(self):
+        self.toggle_theme.emit()
+        self.theme_btn.setText("Switch to light mode" if theme.MODE == "dark" else "Switch to dark mode")
 
     def fill_accounts(self):
         clear_layout(self.accounts)

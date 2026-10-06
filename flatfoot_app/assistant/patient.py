@@ -1,9 +1,10 @@
 """One patient's page: the black X-ray lightbox on the left, result cards on the right."""
 import os
+import time
 
 import numpy as np
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QMessageBox, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtCore import QStandardPaths, Qt, QTimer, Signal
+from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QMessageBox, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
 
 import flatfoot_app as ff
 
@@ -11,7 +12,7 @@ from . import engine, report
 from .dialogs import AddXrayDialog, PatientDialog, ReportDialog, thumb_of
 from .pages import patient_facts, when
 from .store import loads
-from .viewer import Drawer, to_pixmap_gray
+from .viewer import SCAN_SECONDS, Drawer, to_pixmap_gray
 from .widgets import button, card, chips, clear_layout, label, set_on
 
 VIEW_NAMES = {"side": "Side view", "top": "Top-down view"}
@@ -35,7 +36,8 @@ class ModelCard(QFrame):
         self.body = QVBoxLayout()
         self.body.setSpacing(6)
         lay.addLayout(self.body)
-        self.score = label(score_line, muted=True, wrap=True, size=12)
+        self.score = label(score_line, wrap=True, size=12)
+        self.score.setStyleSheet("font-size: 12px; font-weight: 600;")
         lay.addWidget(self.score)
 
     def show_empty(self, text):
@@ -68,6 +70,7 @@ class PatientPage(QWidget):
         self.engine = None
         self.xrays, self.current = [], None
         self.busy = set()
+        self.started = {}       # xray id -> when its scan began (results wait for one full sweep)
         self.threshold = 17.7
 
         outer = QVBoxLayout(self)
@@ -225,7 +228,7 @@ class PatientPage(QWidget):
             c.hud["bl"] = [("ANALYSING…", "")]
         else:
             c.hud["bl"] = [(t.upper(), col) for t, col in engine.findings(res, ed, self.threshold)]
-        c.scanning(x["id"] in self.busy)
+        c.scanning(x["id"] in self.busy, self.started.get(x["id"]))
         c.update()
         self.show_cards()
 
@@ -314,23 +317,47 @@ class PatientPage(QWidget):
         self.note.setPlaceholderText("Note on this X-ray")
         self.note.setFixedHeight(80)
         self.xray_lay.addWidget(self.note)
+        if x["marked"]:
+            self.xray_lay.addWidget(label("Marked copy saved on this PC", muted=True))
         row = QHBoxLayout()
         row.addWidget(button("Save note", "ghost", self.save_note))
         again = button("Check again", "ghost", lambda: self.run(x["id"]))
         again.setEnabled(x["id"] not in self.busy)
         row.addWidget(again)
         self.xray_lay.addLayout(row)
+        row = QHBoxLayout()
+        save = button("Save marked X-ray", "ghost", self.save_marked,
+                      tip="Save the X-ray with its points, lines and findings drawn on")
+        save.setEnabled(bool(x["results"]) and x["id"] not in self.busy)
+        row.addWidget(save)
+        delete = button("Delete X-ray", "danger", self.delete_xray)
+        delete.setEnabled(x["id"] not in self.busy)
+        row.addWidget(delete)
+        self.xray_lay.addLayout(row)
 
     # ---------- actions ----------
 
-    def run(self, xray_id):
+    def mark_busy(self, xray_id):
         self.busy.add(xray_id)
+        self.started.setdefault(xray_id, time.monotonic())
+
+    def run(self, xray_id):
+        self.mark_busy(xray_id)
         if self.current and self.current["id"] == xray_id:
             self.apply_results()
         self.analyse.emit(xray_id)
 
     def analysis_done(self, xray_id):
+        """Results are saved; show them once the scan line has swept the whole X-ray."""
+        left = SCAN_SECONDS - (time.monotonic() - self.started.get(xray_id, 0))
+        if left > 0:
+            QTimer.singleShot(int(left * 1000), lambda: self._show_done(xray_id))
+        else:
+            self._show_done(xray_id)
+
+    def _show_done(self, xray_id):
         self.busy.discard(xray_id)
+        self.started.pop(xray_id, None)
         if self.patient and any(x["id"] == xray_id for x in self.store.xrays(self.patient["id"])):
             self.xrays = self.store.xrays(self.patient["id"])
             if self.current and self.current["id"] == xray_id:
@@ -342,6 +369,7 @@ class PatientPage(QWidget):
 
     def analysis_failed(self, xray_id, msg):
         self.busy.discard(xray_id)
+        self.started.pop(xray_id, None)
         if self.current and self.current["id"] == xray_id:
             self.apply_results()
         QMessageBox.warning(self, "Check failed", f"The models couldn't read this X-ray.\n\n{msg}")
@@ -354,7 +382,7 @@ class PatientPage(QWidget):
         src, view, side = d.choice
         x = self.store.add_xray(self.user["id"], self.patient["id"], src, view, side or "")
         self.current = x
-        self.busy.add(x["id"])
+        self.mark_busy(x["id"])
         self.reload(select=x["id"])
         self.analyse.emit(x["id"])
         self.changed.emit()
@@ -377,6 +405,46 @@ class PatientPage(QWidget):
             self.current = self.store.xray(self.current["id"])
             self.xrays = self.store.xrays(self.patient["id"])
             self.apply_results()
+
+    def save_marked(self, path=None):
+        """PNG of the X-ray as shown, with points, lines and findings: one copy kept in the patient's
+        record (data folder), one where the person chooses (default Documents\\Foot X-ray Assistant\\Marked)."""
+        x = self.current
+        img = self.drawer.canvas.render_marked() if x else None
+        if img is None:
+            return None
+        if path is None:
+            folder = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation),
+                                  "Foot X-ray Assistant", "Marked")
+            os.makedirs(folder, exist_ok=True)
+            stem = os.path.splitext(x["original_name"] or "xray")[0]
+            name = f"{self.patient['code']}_{VIEW_NAMES[x['view']].split()[0].lower()}_{stem}_marked.png"
+            path, _ = QFileDialog.getSaveFileName(self, "Save marked X-ray", os.path.join(folder, name), "PNG (*.png)")
+            if not path:
+                return None
+        keep = self.store.marked_path(x)
+        if not img.save(keep) or not img.save(path):
+            QMessageBox.warning(self, "Not saved", "The marked X-ray couldn't be saved there.")
+            return None
+        self.store.set_marked(self.user["id"], x["id"], keep)
+        self.current = self.store.xray(x["id"])
+        self.show_xray_card()
+        return path
+
+    def delete_xray(self, confirm=True):
+        x = self.current
+        if x is None:
+            return
+        if confirm:
+            ask = QMessageBox.question(self, "Delete X-ray",
+                                       f"Delete {x['original_name']} and its results from this patient?\n"
+                                       "This can't be undone.")
+            if ask != QMessageBox.Yes:
+                return
+        self.store.delete_xray(self.user["id"], x["id"])
+        self.current = None
+        self.reload()
+        self.changed.emit()
 
     def save_note(self):
         if self.current:

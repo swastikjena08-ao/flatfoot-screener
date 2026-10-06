@@ -2,7 +2,6 @@
 import traceback
 
 from PySide6.QtCore import QEvent, QObject, QThread, QTimer, Signal
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 
 from . import engine, theme
@@ -69,6 +68,7 @@ class MainWindow(QMainWindow):
             self.scores = {}
         self.engine = None
         self.user = None
+        self.apply_theme(self.store.prefs().get("theme", "light"))
         self.queue, self.worker = [], None
 
         self.stack = QStackedWidget()
@@ -89,6 +89,7 @@ class MainWindow(QMainWindow):
         self.home.new_patient.connect(self.new_patient)
         self.home.settings.connect(self.open_settings)
         self.home.sign_out.connect(lambda: self.sign_out())
+        self.home.toggle_theme.connect(self.toggle_theme)
         self.patient.back.connect(self.go_home)
         self.patient.analyse.connect(self.enqueue)
         self.patient.changed.connect(self.home.refresh)
@@ -100,6 +101,7 @@ class MainWindow(QMainWindow):
         self.watch = IdleWatch(self.idle)
         QApplication.instance().installEventFilter(self.watch)
 
+        self.home.show_theme(theme.MODE)
         if self.store.has_users():
             self.show_login()
         else:
@@ -140,7 +142,27 @@ class MainWindow(QMainWindow):
             self.open_patient(d.result_row["id"])
 
     def open_settings(self):
-        SettingsDialog(self, self.store, self.user, self.engine, self.scores).exec()
+        d = SettingsDialog(self, self.store, self.user, self.engine, self.scores)
+        d.toggle_theme.connect(self.toggle_theme)
+        d.exec()
+
+    # ---------- light / dark ----------
+
+    def apply_theme(self, mode):
+        app = QApplication.instance()
+        app.setStyleSheet(theme.set_mode(mode))
+        if hasattr(self, "home"):
+            self.home.show_theme(theme.MODE)
+            if self.user is not None:
+                self.home.refresh()
+                if self.patient.patient is not None:
+                    self.patient.show_header()
+                    self.patient.show_cards()
+
+    def toggle_theme(self):
+        mode = "light" if theme.MODE == "dark" else "dark"
+        self.store.set_pref("theme", mode)
+        self.apply_theme(mode)
 
     def sign_out(self, message=""):
         self.idle.stop()
@@ -165,7 +187,7 @@ class MainWindow(QMainWindow):
     def enqueue(self, xray_id):
         if xray_id not in self.queue:
             self.queue.append(xray_id)
-            self.patient.busy.add(xray_id)
+            self.patient.mark_busy(xray_id)
         self.next_job()
 
     def next_job(self):
@@ -206,9 +228,7 @@ class MainWindow(QMainWindow):
 
 def run(argv=None, data_dir=None, key_file=None, bunion_dir=None):
     app = QApplication.instance() or QApplication(argv or [])
-    app.setStyleSheet(theme.STYLE)
     app.setFont(theme.font(10))
-    app.setWindowIcon(QIcon(engine.resource("assistant", "assets", "lightbox.png")))
     w = MainWindow(data_dir, key_file, bunion_dir)
     w.show()
     return app.exec()

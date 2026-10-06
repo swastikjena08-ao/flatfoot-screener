@@ -5,6 +5,7 @@ HUD text. Drawer wraps it with the toolbar and the strip of the patient's X-rays
 All points are kept in original image pixels, so they match what the models return.
 """
 import math
+import time
 
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
@@ -15,12 +16,12 @@ from PySide6.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButt
 import flatfoot_app as ff
 
 from . import theme
-from .engine import resource
 from .widgets import set_on
 
 BUNION_LINES = ((0, 1, "TOE", QColor("#5fd4ff")), (2, 3, "MT1", QColor("#ffb547")), (4, 5, "MT2", QColor("#f472b6")))
 ARCH_COLOURS = {"L10": QColor("#5fd4ff"), "L11": QColor("#f472b6")}
 RULER = 22
+SCAN_SECONDS = 5.0
 HIT = 13
 
 
@@ -60,10 +61,10 @@ class XrayCanvas(QWidget):
         self.zoom = 1.0
         self.pan = QPointF(0, 0)
         self.hud = {"tl": [], "tr": [], "bl": []}
-        self.empty = QPixmap(resource("assistant", "assets", "lightbox.png"))
         self.empty_text = "Add an X-ray to this patient to start"
         self._drag = None
         self._pan_from = None
+        self._fixed = None       # image rect while rendering a marked copy
         self._scan = None
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -98,17 +99,23 @@ class XrayCanvas(QWidget):
             self.pan = QPointF(0, 0)
         self.update()
 
-    def scanning(self, on):
-        if on:
+    def scanning(self, on, start=None):
+        """Sweep a line down the whole X-ray, top to bottom, every SCAN_SECONDS while the models run.
+        start: time.monotonic() when this X-ray's check began, so switching X-rays keeps the sweep in step."""
+        if on and self._scan is None:
+            self._scan_start = start or time.monotonic()
             self._scan = 0.0
-            self._timer.start(30)
-        else:
+            self._timer.start(16)
+        elif not on:
             self._scan = None
             self._timer.stop()
         self.update()
 
+    def scan_elapsed(self):
+        return 0.0 if self._scan is None else time.monotonic() - self._scan_start
+
     def _tick(self):
-        self._scan = (self._scan + 0.012) % 1.0
+        self._scan = (self.scan_elapsed() % SCAN_SECONDS) / SCAN_SECONDS
         self.update()
 
     # ---------- geometry ----------
@@ -117,6 +124,8 @@ class XrayCanvas(QWidget):
         return QRectF(RULER, RULER, self.width() - RULER - 6, self.height() - RULER - 6)
 
     def image_rect(self):
+        if self._fixed is not None:
+            return self._fixed
         a = self.area()
         w, h = self.size_
         s = min(a.width() / w, a.height() / h) * self.zoom
@@ -216,40 +225,58 @@ class XrayCanvas(QWidget):
             p.save()
             p.setClipRect(a)
             r = self.image_rect()
-            p.drawPixmap(r, self.pix, QRectF(self.pix.rect()))
-            if self.heat_on in self.heats:
-                pix, (x0, y0, x1, y1) = self.heats[self.heat_on]
-                p.setOpacity(self.heat_alpha)
-                tl, br = self.to_widget(x0, y0), self.to_widget(x1, y1)
-                p.drawPixmap(QRectF(tl, br), pix, QRectF(pix.rect()))
-                p.setOpacity(1)
-            if self.show_points:
-                self._paint_heel(p)
-                self._paint_arch(p)
-                self._paint_feet(p)
+            self._paint_content(p, r)
             if self._scan is not None:
                 yy = r.top() + self._scan * r.height()
+                glow = QColor(theme.X_CYAN)
+                glow.setAlpha(45)
+                p.fillRect(QRectF(r.left(), yy - 26, r.width(), 26), glow)
                 p.setPen(QPen(theme.X_CYAN, 2))
                 p.drawLine(QPointF(r.left(), yy), QPointF(r.right(), yy))
-                glow = QColor(theme.X_CYAN)
-                glow.setAlpha(40)
-                p.fillRect(QRectF(r.left(), yy - 18, r.width(), 18), glow)
             p.restore()
         self._paint_rulers(p, a)
         self._paint_hud(p, a)
         p.end()
 
-    def _paint_empty(self, p, a):
-        if not self.empty.isNull():
-            s = min(a.width() / self.empty.width(), a.height() / self.empty.height())
-            w, h = self.empty.width() * s, self.empty.height() * s
-            p.setOpacity(0.55)
-            p.drawPixmap(QRectF(a.center().x() - w / 2, a.center().y() - h / 2, w, h), self.empty,
-                         QRectF(self.empty.rect()))
+    def _paint_content(self, p, r):
+        p.drawPixmap(r, self.pix, QRectF(self.pix.rect()))
+        if self.heat_on in self.heats:
+            pix, (x0, y0, x1, y1) = self.heats[self.heat_on]
+            p.setOpacity(self.heat_alpha)
+            p.drawPixmap(QRectF(self.to_widget(x0, y0), self.to_widget(x1, y1)), pix, QRectF(pix.rect()))
             p.setOpacity(1)
-        p.setPen(theme.X_INK)
+        if self.show_points:
+            self._paint_heel(p)
+            self._paint_arch(p)
+            self._paint_feet(p)
+
+    def render_marked(self, long_side=1600):
+        """The X-ray with the heatmap shown now, the points, lines and findings drawn on, as a QImage."""
+        if self.pix is None:
+            return None
+        w, h = self.size_
+        s = long_side / max(w, h)
+        out = QImage(round(w * s), round(h * s), QImage.Format_RGB32)
+        out.fill(theme.X_BG)
+        self._fixed = QRectF(0, 0, out.width(), out.height())
+        try:
+            p = QPainter(out)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            self._paint_content(p, self._fixed)
+            hud, self.hud = self.hud, {**self.hud, "br": []}
+            zoom, self.zoom = self.zoom, None
+            self._paint_hud(p, QRectF(0, 0, out.width(), out.height()))
+            self.hud, self.zoom = hud, zoom
+            p.end()
+        finally:
+            self._fixed = None
+        return out
+
+    def _paint_empty(self, p, a):
+        p.setPen(theme.X_MUTED)
         p.setFont(QFont(theme.MONO, 11))
-        p.drawText(a.adjusted(0, 0, 0, -24), Qt.AlignHCenter | Qt.AlignBottom, self.empty_text)
+        p.drawText(a, Qt.AlignCenter, self.empty_text)
 
     def _label(self, p, at, text, colour):
         p.setFont(QFont(theme.MONO, 9, QFont.Bold))
@@ -359,11 +386,11 @@ class XrayCanvas(QWidget):
         lh = fm.height() + 2
         pad = 12
         colours = {"red": theme.X_RED, "amber": theme.X_AMBER, "green": QColor("#6ee7a8")}
-        z = f"MAG {self.zoom:.1f}x"
+        z = f"MAG {self.zoom:.1f}x" if self.zoom and self.pix is not None else None
         blocks = (("tl", [(t, theme.X_INK if i == 0 else theme.X_MUTED) for i, t in enumerate(self.hud["tl"])]),
                   ("tr", [(t, theme.X_MUTED) for t in self.hud["tr"]]),
                   ("bl", [(t, colours.get(c, theme.X_INK)) for t, c in self.hud["bl"]]),
-                  ("br", [(z, theme.X_MUTED)]))
+                  ("br", [(z, theme.X_MUTED)] if z else []))
         for corner, rows in blocks:
             if not rows:
                 continue

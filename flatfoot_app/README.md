@@ -142,7 +142,7 @@ pyinstaller --noconfirm --onedir --windowed --name "Foot X-ray Assistant" ^
   --paths .. --hidden-import heel_spur.predict --hidden-import bunion.predict ^
   --add-data "model.onnx;." --add-data "landmarks.onnx;." --add-data "landmarks.json;." ^
   --add-data "heel_finder.onnx;." --add-data "heel_spur.onnx;." --add-data "heel_spur.json;." ^
-  --add-data "models/bunion;models/bunion" --add-data "assistant/assets;assistant/assets" ^
+  --add-data "models/bunion;models/bunion" ^
   --add-data "assistant/activation_keys.json;assistant" --add-data "assistant/model_scores.json;assistant" ^
   foot_assistant.py
 ```

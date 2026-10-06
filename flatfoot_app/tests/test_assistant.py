@@ -240,3 +240,77 @@ def test_named_foot_still_uses_foot_finder(eng, monkeypatch):
     seen.clear()
     eng.analyse(img, "top", "right")      # only one foot found: measure it as the foot named
     assert seen == {"right": (10.0, 20.0, 150.0, 480.0)}
+
+
+def test_delete_xray_removes_file_and_marked_copy(store, doctor, tmp_path):
+    p = store.add_patient(doctor["id"], "P-9", "Del Test")
+    src = tmp_path / "x.png"
+    Image.new("L", (40, 30)).save(src)
+    x = store.add_xray(doctor["id"], p["id"], str(src), "top", "left")
+    marked = store.marked_path(x)
+    Image.new("RGB", (10, 10)).save(marked)
+    store.set_marked(doctor["id"], x["id"], marked)
+    path = store.xray_path(x)
+    store.delete_xray(doctor["id"], x["id"])
+    assert store.xray(x["id"]) is None and not os.path.exists(path) and not os.path.exists(marked)
+    assert store.xrays(p["id"]) == []
+
+
+def test_prefs_survive_restart(store):
+    store.set_pref("theme", "dark")
+    again = Store(store.folder)
+    assert again.prefs()["theme"] == "dark"
+    again.close()
+
+
+def _side_results():
+    return {"view": "side", "side": "right",
+            "flat": {"p": 0.9, "cam": np.full((7, 7), 0.5).tolist(), "left": False, "how": "detected automatically",
+                     "points": {"L10": [100.0, 200.0], "L11": [200.0, 220.0]}},
+            "spur": {"probs": {"normal": 0.1, "spur": 0.85, "sever": 0.05}, "label": "spur", "box": [250, 150, 380, 290],
+                     "crop_box": [240, 140, 390, 290], "heatmap": np.full((7, 7), 0.3).tolist()}}
+
+
+def test_save_marked_delete_and_dark_mode(window, tmp_path):
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    x = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    w.store.save_results(x["id"], _side_results(), "right")
+    w.open_patient(p["id"])
+    out = tmp_path / "marked.png"
+    assert w.patient.save_marked(str(out)) == str(out)
+    img = Image.open(out)
+    assert max(img.size) == 1600
+    assert os.path.exists(w.store.marked_path(w.store.xray(x["id"])))
+    w.toggle_theme()
+    assert w.store.prefs()["theme"] == "dark" and w.home.theme_btn.text() == "Light mode"
+    w.toggle_theme()
+    w.patient.delete_xray(confirm=False)
+    assert w.store.xrays(p["id"]) == [] and w.patient.current is None
+
+
+def test_results_wait_for_a_full_scan(window, tmp_path):
+    from assistant import patient as patient_page
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    x = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    w.open_patient(p["id"])
+    w.patient.mark_busy(x["id"])
+    w.store.save_results(x["id"], _side_results(), "right")
+    shots = []
+    import PySide6.QtCore as qc
+    real = qc.QTimer.singleShot
+    patient_page.QTimer.singleShot = staticmethod(lambda ms, fn: shots.append(ms))
+    try:
+        w.patient.analysis_done(x["id"])
+    finally:
+        patient_page.QTimer.singleShot = real
+    assert x["id"] in w.patient.busy and shots and 4000 < shots[0] <= 5000
