@@ -15,7 +15,7 @@ import pandas as pd
 import torch
 from sklearn.metrics import confusion_matrix, roc_auc_score
 
-from common import CLASSES, CROP_CACHE, CROP_SIZE, LOC_SIZE, box_iou, heel_crop, letterbox, load_gray, resnet18
+from common import CLASSES, HeelFinder, CROP_CACHE, CROP_SIZE, LOC_SIZE, box_iou, heel_crop, letterbox, load_gray, resnet18
 from prep import FOLDERS, LABELS
 from train import center, predict, to_xyxy
 
@@ -46,7 +46,7 @@ def main():
     df = df[df["split"] == a.subset].reset_index(drop=True)
     y = df["label"].map(CLASSES.index).to_numpy()
 
-    loc = resnet18(4)
+    loc = HeelFinder()
     loc.load_state_dict(torch.load(a.locate, map_location="cpu"))
     clf = resnet18(len(CLASSES))
     clf.load_state_dict(torch.load(a.classify, map_location="cpu"))

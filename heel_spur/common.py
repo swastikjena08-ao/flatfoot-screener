@@ -62,6 +62,25 @@ def resnet18(n_out, init_onnx=None):
     return m
 
 
+class HeelFinder(nn.Module):
+    """ResNet-18 body plus a head that keeps the 8x8 layout (average pooling would throw
+    away where things are, which is the whole point here). Outputs (cx, cy, w, h) logits."""
+
+    def __init__(self, init_onnx=None):
+        super().__init__()
+        m = torchvision.models.resnet18(weights=None)
+        if init_onnx:
+            load_folded_onnx(m, init_onnx)
+        self.body = nn.Sequential(*list(m.children())[:-2])
+        g = LOC_SIZE // 32
+        self.head = nn.Sequential(nn.Conv2d(512, 64, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
+                                  nn.Flatten(), nn.Linear(64 * g * g, 256), nn.ReLU(inplace=True),
+                                  nn.Linear(256, 4))
+
+    def forward(self, x):
+        return self.head(self.body(x))
+
+
 def load_folded_onnx(model, path):
     """Copy the backbone of an exported torchvision ResNet-18 into `model`.
 

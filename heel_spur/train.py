@@ -15,7 +15,7 @@ import torch
 import torch.nn.functional as F
 from sklearn.metrics import roc_auc_score
 
-from common import CLASSES, CROP_CACHE, CROP_SIZE, LOC_SIZE, box_iou, resnet18, to_tensor
+from common import CLASSES, CROP_CACHE, CROP_SIZE, LOC_SIZE, HeelFinder, box_iou, resnet18, to_tensor
 
 
 def photometric(f, rng):
@@ -110,7 +110,7 @@ def main():
     tr, va = d["split"] == "train", d["split"] == "val"
     if a.task == "locate":
         imgs, target = d["loc_img"], d["loc_box"]
-        model, key = resnet18(4, a.init), "mean_iou"
+        model, key = HeelFinder(a.init), "mean_iou"
     else:
         imgs, target = d["crop"], d["y"]
         model, key = resnet18(len(CLASSES), a.init), "macro_auc"

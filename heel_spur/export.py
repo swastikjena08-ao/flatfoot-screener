@@ -13,7 +13,7 @@ import os
 import torch
 import torch.nn as nn
 
-from common import CLASSES, CROP_PAD, CROP_SIZE, LOC_SIZE, resnet18
+from common import CLASSES, HeelFinder, CROP_PAD, CROP_SIZE, LOC_SIZE, resnet18
 
 
 class Finder(nn.Module):
@@ -47,7 +47,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
 
-    loc = resnet18(4)
+    loc = HeelFinder()
     loc.load_state_dict(torch.load(a.locate, map_location="cpu"))
     torch.onnx.export(Finder(loc).eval(), torch.zeros(1, 3, LOC_SIZE, LOC_SIZE),
                       os.path.join(a.out, "heel_finder.onnx"), input_names=["image"],
