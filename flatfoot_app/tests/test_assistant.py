@@ -335,3 +335,49 @@ def test_results_wait_for_a_full_scan(window, tmp_path):
     finally:
         patient_page.QTimer.singleShot = real
     assert x["id"] in w.patient.busy and shots and 4000 < shots[0] <= 5000
+
+
+def test_pen_and_note_marks_are_saved_and_reported(window, tmp_path, monkeypatch):
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QInputDialog
+    from PySide6.QtCore import QEvent
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    x = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    w.store.save_results(x["id"], _side_results(), "right")
+    w.open_patient(p["id"])
+    w.resize(1440, 900)
+    c = w.patient.drawer.canvas
+    c.resize(800, 600)
+    w.patient.drawer.pick_tool("pen")
+    r = c.image_rect()
+
+    def mouse(kind, fx, fy):
+        pos = QPointF(r.x() + fx * r.width(), r.y() + fy * r.height())
+        c.event(QMouseEvent(kind, pos, pos, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+
+    mouse(QEvent.MouseButtonPress, 0.2, 0.2)
+    mouse(QEvent.MouseMove, 0.4, 0.3)
+    mouse(QEvent.MouseButtonRelease, 0.5, 0.4)
+    marks = json.loads(w.store.xray(x["id"])["marks"])
+    assert len(marks["strokes"]) == 1 and len(marks["strokes"][0]["pts"]) >= 2
+    monkeypatch.setattr(QInputDialog, "exec", lambda self: True)
+    monkeypatch.setattr(QInputDialog, "textValue", lambda self: "Swelling over the heel")
+    w.patient.note_clicked(-1, 120.0, 90.0)
+    marks = json.loads(w.store.xray(x["id"])["marks"])
+    assert marks["notes"] == [{"x": 120.0, "y": 90.0, "text": "Swelling over the heel"}]
+    w.store.save_results(x["id"], _side_results(), "right")       # a re-check keeps the marks
+    assert json.loads(w.store.xray(x["id"])["marks"])["notes"]
+    text = report.draft(w.store.patient(p["id"]), w.store.xrays(p["id"]), u)
+    assert "1. Swelling over the heel" in text
+    out = tmp_path / "m.png"
+    w.patient.show_xray(x["id"])
+    assert w.patient.save_marked(str(out))
+    monkeypatch.setattr(QInputDialog, "textValue", lambda self: "")
+    w.patient.note_clicked(0, 0, 0)                                   # empty text deletes the note
+    assert json.loads(w.store.xray(x["id"])["marks"])["notes"] == []

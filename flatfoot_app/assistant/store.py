@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS xrays (
     note TEXT NOT NULL DEFAULT '',
     signed_by INTEGER REFERENCES users(id),
     signed_at REAL,
-    marked TEXT NOT NULL DEFAULT ''
+    marked TEXT NOT NULL DEFAULT '',
+    marks TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS audit (
     id INTEGER PRIMARY KEY,
@@ -95,7 +96,9 @@ class Store:
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(xrays)")}
         if "marked" not in cols:          # databases made before marked copies existed
             self.db.execute("ALTER TABLE xrays ADD COLUMN marked TEXT NOT NULL DEFAULT ''")
-            self.db.commit()
+        if "marks" not in cols:           # ... and before the doctor's drawings and notes
+            self.db.execute("ALTER TABLE xrays ADD COLUMN marks TEXT NOT NULL DEFAULT '{}'")
+        self.db.commit()
         self.key_hashes = auth.load_key_hashes(key_file) if key_file else set()
 
     # ---------- preferences for this PC (light/dark look) ----------
@@ -337,6 +340,12 @@ class Store:
         self.db.execute("UPDATE xrays SET edits = ? WHERE id = ?", (json.dumps(edits), xray_id))
         self.db.commit()
         self.log(user_id, "edit_points", str(xray_id))
+
+    def save_marks(self, user_id, xray_id, marks):
+        """The doctor's drawings and typed notes on the X-ray. Kept when the models re-check it."""
+        self.db.execute("UPDATE xrays SET marks = ? WHERE id = ?", (json.dumps(marks), xray_id))
+        self.db.commit()
+        self.log(user_id, "edit_marks", str(xray_id))
 
     def save_note(self, user_id, xray_id, note):
         self.db.execute("UPDATE xrays SET note = ? WHERE id = ?", (note, xray_id))

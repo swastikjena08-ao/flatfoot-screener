@@ -4,7 +4,7 @@ import time
 
 import numpy as np
 from PySide6.QtCore import QStandardPaths, Qt, QTimer, Signal
-from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QMessageBox, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QFrame, QInputDialog, QHBoxLayout, QMessageBox, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
 
 import flatfoot_app as ff
 
@@ -100,6 +100,8 @@ class PatientPage(QWidget):
         self.drawer.add_clicked.connect(self.add_xray)
         self.drawer.reset_clicked.connect(self.reset_points)
         self.drawer.canvas.points_edited.connect(self.points_edited)
+        self.drawer.canvas.marks_changed.connect(self.marks_changed)
+        self.drawer.canvas.note_clicked.connect(self.note_clicked)
         main.addWidget(self.drawer, 7)
 
         side = QWidget()
@@ -218,6 +220,7 @@ class PatientPage(QWidget):
             feet.append(f["points"])
             labels.append(f"{f['side'].upper()}  HVA {f['hva']:.1f}°  IMA {f['ima']:.1f}°")
         c.set_overlays(arch, feet, labels, heel)
+        c.set_marks(loads(x["marks"], {}))
         self.drawer.available_heats(heats)
         self.drawer.reset.setVisible(bool(ed))
         side = (x["side"] or res.get("side") or "").upper()
@@ -394,6 +397,37 @@ class PatientPage(QWidget):
         self.current = self.store.xray(x["id"])
         self.xrays = self.store.xrays(self.patient["id"])
         self.apply_results()
+
+    def marks_changed(self, marks):
+        if self.current:
+            self.store.save_marks(self.user["id"], self.current["id"], marks)
+            self.current = self.store.xray(self.current["id"])
+
+    def note_clicked(self, index, x, y):
+        """Note tool: a click on the X-ray pins a new remark there; a click on a pin edits or deletes it."""
+        c = self.drawer.canvas
+        notes = c.marks["notes"]
+        old = notes[index]["text"] if index >= 0 else ""
+        title = f"Remark {index + 1}" if index >= 0 else "New remark"
+        d = QInputDialog(self)
+        d.setWindowTitle(title)
+        d.setLabelText("Remark on the X-ray (leave empty and press OK to delete it):" if index >= 0
+                       else "Remark on the X-ray at this spot:")
+        d.setTextValue(old)
+        if not d.exec():
+            return
+        text = d.textValue().strip()
+        if index >= 0:
+            if text:
+                notes[index]["text"] = text
+            else:
+                notes.pop(index)
+        elif text:
+            notes.append({"x": round(x, 1), "y": round(y, 1), "text": text})
+        else:
+            return
+        c.update()
+        self.marks_changed(c.marks)
 
     def reset_points(self):
         if self.current:
