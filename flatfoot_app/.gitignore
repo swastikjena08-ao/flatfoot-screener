@@ -16,8 +16,5 @@ graphify-out/
 # bunion model weights: trained on HVAngleEst (CC BY-NC-ND 4.0), copied in by hand, never committed
 models/bunion/*.onnx
 
-# fracture model weights: made with ../fracture/export.py from a trained run, kept out of the repo
-fracture.onnx
-
 # local app data when run with --data-dir inside the repo
 app-data/

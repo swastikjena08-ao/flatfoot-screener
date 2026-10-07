@@ -18,17 +18,6 @@ def latest_by_view(xrays):
     return out
 
 
-def _fracture(res, lines, impression, view):
-    fr = res.get("fracture")
-    if not fr:
-        return
-    t, _ = engine.fracture_class(fr)
-    lines.append(f"Fracture: {t}. Model score {fr['p']:.0%} (flag from {fr['threshold']:.0%});"
-                 " the model misses some foot and ankle fractures, so no flag does not rule one out.")
-    if fr["flag"]:
-        impression.append(f"possible fracture on the {view} (model score {fr['p']:.0%})")
-
-
 def draft(patient, xrays, author, threshold=17.7):
     from .pages import age_of
     lines = ["FOOT X-RAY REPORT (DRAFT)", ""]
@@ -64,7 +53,6 @@ def draft(patient, xrays, author, threshold=17.7):
                          f" child's heel (Sever's) {pr['sever']:.0%}.")
             if t != "No heel spur":
                 impression.append(t.lower())
-        _fracture(res, lines, impression, "side view")
         lines.append("")
     top = picked.get("top")
     if top:
@@ -80,7 +68,6 @@ def draft(patient, xrays, author, threshold=17.7):
                          f"intermetatarsal angle {f['ima']:.1f}°{moved}. {t}.")
             if t != "No bunion":
                 impression.append(f"{t.lower()} on the {f['side']} (HVA {f['hva']:.0f}°, IMA {f['ima']:.0f}°)")
-        _fracture(res, lines, impression, "top-down view")
         lines.append("")
     lines.append("IMPRESSION")
     lines.append(("Findings: " + "; ".join(impression) + ".") if impression else "No flagged findings on the measured views.")

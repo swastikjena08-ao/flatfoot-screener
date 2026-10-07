@@ -32,15 +32,6 @@ python evaluate.py --cache work/cache.npz --model work/run/best.pt --out work/ru
 
 `train_colab.ipynb` reruns everything on a Colab GPU at 512 px for 40 rounds.
 
-## In the app
-
-```
-python export.py --model work/run/best.pt --metrics work/run/metrics.json --size 512 --out ../flatfoot_app
-python predict_check.py --data D:/fracatlas/FracAtlas --cache work/cache.npz --model work/run/best.pt --onnx-dir ../flatfoot_app
-```
-
-`export.py` writes `fracture.onnx` (kept out of the repo) and `fracture.json` (input size and the flag threshold). `predict.py` is what the app runs (numpy, Pillow and onnxruntime only, mirrored-image averaging as in `evaluate.py`); `predict_check.py` checks it gives the same answers as PyTorch (60 test X-rays: same probabilities to 5 decimals, same flag on all 60). The app runs it on every X-ray, side or top-down, and shows the likelihood, a "possible fracture" flag and a fracture heatmap; since it misses about half of foot and ankle fractures, no flag reads as "no fracture flagged", never as an all-clear.
-
 ## Results
 
 CPU run (`results/cpu_384/`): 384 px, 20 rounds, best round 14 by validation score. Flag threshold set on validation to catch 90% of its fractures.

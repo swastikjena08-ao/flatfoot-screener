@@ -129,23 +129,19 @@ Make keys with `python tools/make_keys.py 10 --out keys.txt`. Only the keys' SHA
 | Side | `model.onnx` + `landmarks.onnx` | Calcaneal pitch (drag L10/L11 to correct), flat foot under 17.7°, high arch flag over 30°, heatmap |
 | Side | `heel_finder.onnx` + `heel_spur.onnx` | Spur / normal / child's heel (Sever's) with the heel box and heatmap |
 | Top-down | `models/bunion/*.onnx` | HVA and IMA per foot (drag the 6 points to correct) |
-| Either | `fracture.onnx` + `fracture.json` | Fracture likelihood, a "possible fracture" flag and a fracture heatmap. It misses about half of foot and ankle fractures, so no flag is not an all-clear |
 
 Test scores of the app's own pipeline are in `assistant/model_scores.json` and shown in the app; `tools/check_models.py` recomputes them from the datasets.
 
 **Bunion models.** They were trained on HVAngleEst (CC BY-NC-ND 4.0), so the weights are not in this repository. Copy `bunion_points.onnx` (first pass) and `bunion_zoom.onnx` (zoomed pass) into `models/bunion/`, plus `footfinder.onnx` if you have it. Without the foot finder you pick left or right and the whole X-ray is measured as that foot; with it, both feet on one X-ray are found and measured.
-
-**Fracture model.** `fracture.onnx` (45 MB) is not in this repository; make it from a trained run with `python ../fracture/export.py --model best.pt --metrics metrics.json --size 512 --out .` (see `../fracture/README.md`). `fracture.json` holds its input size and the flag threshold. Without `fracture.onnx` the other checks work as before and the fracture card says the model isn't loaded.
 
 **Build the assistant .exe.**
 
 ```
 pip install pyinstaller
 pyinstaller --noconfirm --onedir --windowed --name "Foot X-ray Assistant" ^
-  --paths .. --hidden-import heel_spur.predict --hidden-import bunion.predict --hidden-import fracture.predict ^
+  --paths .. --hidden-import heel_spur.predict --hidden-import bunion.predict ^
   --add-data "model.onnx;." --add-data "landmarks.onnx;." --add-data "landmarks.json;." ^
   --add-data "heel_finder.onnx;." --add-data "heel_spur.onnx;." --add-data "heel_spur.json;." ^
-  --add-data "fracture.onnx;." --add-data "fracture.json;." ^
   --add-data "models/bunion;models/bunion" --add-data "assistant/assets;assistant/assets" ^
   --add-data "assistant/activation_keys.json;assistant" --add-data "assistant/model_scores.json;assistant" ^
   foot_assistant.py

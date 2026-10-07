@@ -31,15 +31,5 @@
   "ima_mae": 1.1185819685125507,
   "line": "Test score on 160 held-out feet: HVA within 3\u00b0 on 85.0%, IMA on 95.6% (mean error 1.8\u00b0 / 1.1\u00b0)."
  },
- "fracture": {
-  "set": "FracAtlas foot and ankle X-rays, fracture/prep.py test split",
-  "n": 177,
-  "auc": 0.6730769230769231,
-  "fractures_caught": 0.46153846153846156,
-  "n_fractured": 13,
-  "normal_cleared": 0.9024390243902439,
-  "n_normal": 164,
-  "line": "Test score on 177 held-out foot and ankle X-rays: 6 of 13 fractures flagged (46%), 90.2% of 164 normal X-rays cleared. A hint where to look, not a rule-out."
- },
- "note": "Measured with tools/check_models.py through the app's own engine (assistant/engine.py), Oct 6 2026 (fracture Oct 7 2026)."
+ "note": "Measured with tools/check_models.py through the app's own engine (assistant/engine.py), Oct 6 2026."
 }

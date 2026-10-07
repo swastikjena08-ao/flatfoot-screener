@@ -1,10 +1,9 @@
-"""Runs the models on one X-ray. No UI here, so it is safe off the main thread
+"""Runs the three models on one X-ray. No UI here, so it is safe off the main thread
 and easy to test.
 
 * Side view: flat foot (flatfoot_app.py: classifier + L10/L11 heel bone angle) and
   heel spur (heel_spur/predict.py).
 * Top-down view: bunion angles (bunion/predict.py), one result per foot.
-* Both views: fracture flag (fracture/predict.py), a probability and a map of where.
 
 Each model's own predict code is imported and called unchanged, so the app gives the
 same answers as the model's training repo (tools/check_models.py checks this).
@@ -18,7 +17,7 @@ from PIL import Image, ImageOps
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.dirname(HERE)            # flatfoot_app/
-REPO = os.path.dirname(APP_DIR)            # repo root, holds heel_spur/, bunion/ and fracture/
+REPO = os.path.dirname(APP_DIR)            # repo root, holds heel_spur/ and bunion/
 for p in (APP_DIR, REPO):
     if p not in sys.path:
         sys.path.insert(0, p)
@@ -57,7 +56,7 @@ def guess_view(img):
 class Engine:
     def __init__(self, bunion_dir=None):
         self.status = {}
-        self.flat_clf = self.flat_lm = self.spur = self.bunion = self.fracture = None
+        self.flat_clf = self.flat_lm = self.spur = self.bunion = None
         try:
             import onnxruntime as ort
             self.flat_clf = ort.InferenceSession(resource("model.onnx"), providers=["CPUExecutionProvider"])
@@ -71,12 +70,6 @@ class Engine:
             self.status["spur"] = "ready"
         except Exception as e:  # noqa: BLE001
             self.status["spur"] = f"not loaded: {e}"
-        try:
-            from fracture.predict import Fracture
-            self.fracture = Fracture(resource())
-            self.status["fracture"] = "ready"
-        except Exception as e:  # noqa: BLE001
-            self.status["fracture"] = f"not loaded: {e}"
         bunion_dir = bunion_dir or resource("models", "bunion")
         try:
             from bunion.predict import Bunion
@@ -106,7 +99,6 @@ class Engine:
             r = self.spur.predict(img)
             out["spur"] = {"probs": r["probs"], "label": r["label"], "box": list(r["box"]),
                            "crop_box": list(r["crop_box"]), "heatmap": np.asarray(r["heatmap"]).tolist()}
-        self.check_fracture(img, out)
         return out
 
     # ---------- top-down view ----------
@@ -114,7 +106,6 @@ class Engine:
     def analyse_top(self, img, side=None):
         """side: None to let the foot finder find both feet, or 'left'/'right' for a one-foot X-ray."""
         out = {"view": "top", "feet": []}
-        self.check_fracture(img, out)
         if self.bunion is None:
             return out
         gray = to_gray(img)
@@ -126,12 +117,6 @@ class Engine:
         out["feet"] = feet
         out["side"] = feet[0]["side"] if len(feet) == 1 else ("both" if feet else "")
         return out
-
-    def check_fracture(self, img, out):
-        if self.fracture is not None:
-            r = self.fracture.predict(img)
-            out["fracture"] = {"p": r["p"], "flag": bool(r["flag"]), "threshold": r["threshold"],
-                               "heatmap": np.asarray(r["heatmap"]).tolist(), "map_box": list(r["map_box"])}
 
     def analyse(self, img, view, side=None):
         return self.analyse_side(img, side) if view == "side" else self.analyse_top(img, side)
@@ -189,15 +174,6 @@ def spur_class(spur):
     return ("Possible heel spur", "amber") if p["spur"] >= 0.3 else ("No heel spur", "green")
 
 
-def fracture_class(fr):
-    """The model misses about half of foot and ankle fractures, so it never reads as an all-clear."""
-    if not fr:
-        return None, ""
-    if fr["flag"]:
-        return "Possible fracture", "red"
-    return "No fracture flagged", "grey"
-
-
 def findings(results, edits, threshold=17.7):
     """Short labels for lists and the report: [(text, colour)]."""
     out = []
@@ -209,9 +185,6 @@ def findings(results, edits, threshold=17.7):
         out.append((f"{t} {a:.1f}°", c))
     t, c = spur_class(results.get("spur"))
     if t and c != "green":
-        out.append((t, c))
-    t, c = fracture_class(results.get("fracture"))
-    if c == "red":
         out.append((t, c))
     for f in bunion_feet(results, edits):
         t, c = bunion_class(f["hva"], f["ima"])
