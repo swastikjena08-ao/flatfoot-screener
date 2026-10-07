@@ -47,8 +47,11 @@ def load_one(args):
     return canvas, box_mask(boxes, size), str(imagehash.phash(Image.fromarray(gray))), len(boxes)
 
 
-def make_split(df, seed=0, frac=(0.65, 0.15, 0.20)):
-    """Group-level split, stratified by what the group holds (foot/ankle fracture first)."""
+def make_split(df, seed=0, frac=(0.65, 0.15, 0.20), fa_frac=(0.75, 0.10, 0.15)):
+    """Group-level split, stratified by what the group holds (foot fracture first, then ankle).
+
+    Groups holding a foot or ankle fracture use fa_frac, which puts more of these scarce
+    breaks into training than the rest of the data."""
     parent = {}
 
     def find(a):
@@ -59,16 +62,17 @@ def make_split(df, seed=0, frac=(0.65, 0.15, 0.20)):
     for b, h in zip(df["block"], df["phash"]):
         parent[find("b%d" % b)] = find("h" + h)
     df = df.assign(group=[find("b%d" % b) for b in df["block"]])
-    kind = df.assign(k=np.select([df["fractured"] & df["foot_ankle"], df["fractured"], df["foot_ankle"]],
-                                 [0, 1, 2], 3)).groupby("group")["k"].min()
+    kind = df.assign(k=np.select([df["region"] == "foot", df["region"] == "ankle", df["fractured"],
+                                  df["foot_ankle"]], [0, 1, 2, 3], 4)).groupby("group")["k"].min()
     rng = np.random.default_rng(seed)
     n = df.groupby("group").size()
     out = {}
-    for _, gs in kind.groupby(kind):
+    for k, gs in kind.groupby(kind):
+        f = fa_frac if k <= 1 else frac
         gs = gs.sample(frac=1, random_state=int(rng.integers(1 << 31)))
         cut = np.cumsum(n[gs.index].to_numpy()) / n[gs.index].sum()
         for g, c in zip(gs.index, cut):
-            out[g] = "train" if c <= frac[0] else "val" if c <= frac[0] + frac[1] else "test"
+            out[g] = "train" if c <= f[0] else "val" if c <= f[0] + f[1] else "test"
     return df["group"].map(out)
 
 
