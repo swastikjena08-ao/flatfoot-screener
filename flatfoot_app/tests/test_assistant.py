@@ -225,3 +225,197 @@ def test_patient_page_and_report(window, tmp_path):
     assert json.loads(w.store.xray(x["id"])["edits"]) == {}
     w.go_home()
     assert w.home.rows.count() >= 1
+
+
+def test_named_foot_still_uses_foot_finder(eng, monkeypatch):
+    if not eng.ready("bunion"):
+        pytest.skip("bunion models not installed in models/bunion")
+    seen = {}
+    monkeypatch.setattr(eng.bunion, "finder", object())
+    monkeypatch.setattr(eng.bunion, "find_feet", lambda g: {"left": (10.0, 20.0, 150.0, 480.0)})
+    monkeypatch.setattr(eng.bunion, "predict", lambda g, boxes: seen.update(boxes) or [])
+    img = Image.fromarray(np.zeros((500, 300), np.uint8))
+    eng.analyse(img, "top", "left")
+    assert seen == {"left": (10.0, 20.0, 150.0, 480.0)}
+    seen.clear()
+    eng.analyse(img, "top", "right")      # only one foot found: measure it as the foot named
+    assert seen == {"right": (10.0, 20.0, 150.0, 480.0)}
+
+
+def test_delete_xray_removes_file_and_marked_copy(store, doctor, tmp_path):
+    p = store.add_patient(doctor["id"], "P-9", "Del Test")
+    src = tmp_path / "x.png"
+    Image.new("L", (40, 30)).save(src)
+    x = store.add_xray(doctor["id"], p["id"], str(src), "top", "left")
+    marked = store.marked_path(x)
+    Image.new("RGB", (10, 10)).save(marked)
+    store.set_marked(doctor["id"], x["id"], marked)
+    path = store.xray_path(x)
+    store.delete_xray(doctor["id"], x["id"])
+    assert store.xray(x["id"]) is None and not os.path.exists(path) and not os.path.exists(marked)
+    assert store.xrays(p["id"]) == []
+
+
+def test_prefs_survive_restart(store):
+    store.set_pref("theme", "dark")
+    again = Store(store.folder)
+    assert again.prefs()["theme"] == "dark"
+    again.close()
+
+
+def _side_results():
+    return {"view": "side", "side": "right",
+            "flat": {"p": 0.9, "cam": np.full((7, 7), 0.5).tolist(), "left": False, "how": "detected automatically",
+                     "points": {"L10": [100.0, 200.0], "L11": [200.0, 220.0]}},
+            "spur": {"probs": {"normal": 0.1, "spur": 0.85, "sever": 0.05}, "label": "spur", "box": [250, 150, 380, 290],
+                     "crop_box": [240, 140, 390, 290], "heatmap": np.full((7, 7), 0.3).tolist()}}
+
+
+def test_save_marked_delete_and_dark_mode(window, tmp_path):
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    x = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    w.store.save_results(x["id"], _side_results(), "right")
+    w.open_patient(p["id"])
+    out = tmp_path / "marked.png"
+    assert w.patient.save_marked(str(out)) == str(out)
+    img = Image.open(out)
+    assert max(img.size) == 1600
+    assert os.path.exists(w.store.marked_path(w.store.xray(x["id"])))
+    w.toggle_theme()
+    assert w.store.prefs()["theme"] == "dark" and w.home.theme_btn.text() == "Light mode"
+    w.toggle_theme()
+    w.patient.delete_xray(confirm=False)
+    assert w.store.xrays(p["id"]) == [] and w.patient.current is None
+
+
+def test_thumbnail_cross_deletes_that_xray(window, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    a = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    b = w.store.add_xray(u["id"], p["id"], str(src), "top", "left")
+    w.open_patient(p["id"])
+    thumbs = {t.xray_id: t for t in w.patient.drawer._thumb_buttons}
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
+    thumbs[a["id"]].close_btn.click()
+    assert len(w.store.xrays(p["id"])) == 2          # said no
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    thumbs[a["id"]].close_btn.click()
+    assert [x["id"] for x in w.store.xrays(p["id"])] == [b["id"]]
+    assert [t.xray_id for t in w.patient.drawer._thumb_buttons] == [b["id"]]
+
+
+def test_results_wait_for_a_full_scan(window, tmp_path):
+    from assistant import patient as patient_page
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    x = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    w.open_patient(p["id"])
+    w.patient.mark_busy(x["id"])
+    w.store.save_results(x["id"], _side_results(), "right")
+    shots = []
+    import PySide6.QtCore as qc
+    real = qc.QTimer.singleShot
+    patient_page.QTimer.singleShot = staticmethod(lambda ms, fn: shots.append(ms))
+    try:
+        w.patient.analysis_done(x["id"])
+    finally:
+        patient_page.QTimer.singleShot = real
+    assert x["id"] in w.patient.busy and shots and 4000 < shots[0] <= 5000
+
+
+def test_pen_and_note_marks_are_saved_and_reported(window, tmp_path, monkeypatch):
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QInputDialog
+    from PySide6.QtCore import QEvent
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    x = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    w.store.save_results(x["id"], _side_results(), "right")
+    w.open_patient(p["id"])
+    w.resize(1440, 900)
+    c = w.patient.drawer.canvas
+    c.resize(800, 600)
+    w.patient.drawer.pick_tool("pen")
+    r = c.image_rect()
+
+    def mouse(kind, fx, fy):
+        pos = QPointF(r.x() + fx * r.width(), r.y() + fy * r.height())
+        c.event(QMouseEvent(kind, pos, pos, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+
+    mouse(QEvent.MouseButtonPress, 0.2, 0.2)
+    mouse(QEvent.MouseMove, 0.4, 0.3)
+    mouse(QEvent.MouseButtonRelease, 0.5, 0.4)
+    marks = json.loads(w.store.xray(x["id"])["marks"])
+    assert len(marks["strokes"]) == 1 and len(marks["strokes"][0]["pts"]) >= 2
+    monkeypatch.setattr(QInputDialog, "exec", lambda self: True)
+    monkeypatch.setattr(QInputDialog, "textValue", lambda self: "Swelling over the heel")
+    w.patient.note_clicked(-1, 120.0, 90.0)
+    marks = json.loads(w.store.xray(x["id"])["marks"])
+    assert marks["notes"] == [{"x": 120.0, "y": 90.0, "text": "Swelling over the heel"}]
+    w.store.save_results(x["id"], _side_results(), "right")       # a re-check keeps the marks
+    assert json.loads(w.store.xray(x["id"])["marks"])["notes"]
+    text = report.draft(w.store.patient(p["id"]), w.store.xrays(p["id"]), u)
+    assert "1. Swelling over the heel" in text
+    out = tmp_path / "m.png"
+    w.patient.show_xray(x["id"])
+    assert w.patient.save_marked(str(out))
+    monkeypatch.setattr(QInputDialog, "textValue", lambda self: "")
+    w.patient.note_clicked(0, 0, 0)                                   # empty text deletes the note
+    assert json.loads(w.store.xray(x["id"])["marks"])["notes"] == []
+
+
+def test_note_pins_can_be_dragged_and_still_clicked(window, tmp_path, monkeypatch):
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QInputDialog
+    monkeypatch.setattr(QInputDialog, "exec", lambda self: False)      # editor opens, then cancelled
+    w = window
+    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
+    w.enter(u)
+    p = w.store.add_patient(u["id"], "P-1", "Ravi Kumar")
+    src = tmp_path / "x.png"
+    Image.new("L", (400, 300), 80).save(src)
+    x = w.store.add_xray(u["id"], p["id"], str(src), "side")
+    w.store.save_results(x["id"], _side_results(), "right")
+    w.store.save_marks(u["id"], x["id"], {"strokes": [], "notes": [{"x": 100.0, "y": 100.0, "text": "Porous bone"}]})
+    w.open_patient(p["id"])
+    c = w.patient.drawer.canvas
+    c.resize(800, 600)
+    clicks = []
+    c.note_clicked.connect(lambda i, nx, ny: clicks.append(i))
+
+    def mouse(kind, ix, iy):
+        pos = c.to_widget(ix, iy)
+        c.event(QMouseEvent(kind, pos, pos, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+
+    for tool in (None, "note"):
+        c.set_tool(tool)
+        mouse(QEvent.MouseButtonPress, 100, 100)                       # plain click opens the editor
+        mouse(QEvent.MouseButtonRelease, 100, 100)
+    assert clicks == [0, 0]
+    clicks.clear()
+    mouse(QEvent.MouseButtonPress, 100, 100)                           # drag moves the pin, no editor
+    mouse(QEvent.MouseMove, 200, 150)
+    mouse(QEvent.MouseButtonRelease, 250, 200)
+    assert clicks == []
+    n = json.loads(w.store.xray(x["id"])["marks"])["notes"][0]
+    assert n["text"] == "Porous bone" and abs(n["x"] - 200) < 2 and abs(n["y"] - 150) < 2

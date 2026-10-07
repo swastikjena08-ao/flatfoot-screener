@@ -2,12 +2,11 @@
 import datetime as dt
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from . import theme
-from .engine import resource
 from .store import StoreError
+from .viewer import XrayCanvas
 from .widgets import button, card, chip, clear_layout, field, label, line_edit, set_on
 
 
@@ -43,28 +42,22 @@ def patient_facts(p):
 
 
 class Hero(QFrame):
-    """The black X-ray picture next to the sign-in form."""
+    """The black lightbox panel next to the sign-in form: an empty viewer grid with the three checks."""
 
     def __init__(self):
         super().__init__()
         self.setObjectName("drawer")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(28, 24, 28, 24)
-        top = QLabel("LIGHTBOX  ·  SIDE VIEW  ·  LAT")
-        top.setStyleSheet("color: #dcf3ff; letter-spacing: 2px;")
+        top = QLabel("LIGHTBOX")
+        top.setStyleSheet("color: #dcf3ff; letter-spacing: 2px; font-weight: 700;")
         lay.addWidget(top)
-        self.pic = QLabel()
-        self.pic.setAlignment(Qt.AlignCenter)
-        self.src = QPixmap(resource("assistant", "assets", "lightbox.png"))
-        lay.addWidget(self.pic, 1)
-        for t in ("Flat foot · heel bone angle", "Heel spur · zoomed heel check", "Bunion · HVA and IMA per foot"):
-            lab = QLabel("▸  " + t)
-            lay.addWidget(lab)
-
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        if not self.src.isNull():
-            self.pic.setPixmap(self.src.scaled(self.pic.size() * 0.98, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        grid = XrayCanvas()
+        grid.setMinimumSize(200, 200)
+        grid.empty_text = "Sign in to open your patients' X-rays"
+        lay.addWidget(grid, 1)
+        for t in ("Flat foot · heel bone angle", "Heel spur · zoomed heel check", "Bunion · big toe and metatarsal angles"):
+            lay.addWidget(QLabel("▸  " + t))
 
 
 def split_page(form):
@@ -252,6 +245,7 @@ class HomePage(QWidget):
     new_patient = Signal()
     settings = Signal()
     sign_out = Signal()
+    toggle_theme = Signal()
 
     def __init__(self, store):
         super().__init__()
@@ -270,6 +264,8 @@ class HomePage(QWidget):
         hello.addWidget(self.hello)
         hello.addWidget(self.today)
         top.addLayout(hello, 1)
+        self.theme_btn = button("Dark mode", "ghost", self.toggle_theme.emit)
+        top.addWidget(self.theme_btn)
         top.addWidget(button("Settings", "ghost", self.settings.emit))
         top.addWidget(button("Sign out", "ghost", self.sign_out.emit))
         outer.addLayout(top)
@@ -309,6 +305,9 @@ class HomePage(QWidget):
         lay.addWidget(scroll, 1)
         outer.addWidget(box, 1)
         self.set_filter("all")
+
+    def show_theme(self, mode):
+        self.theme_btn.setText("Light mode" if mode == "dark" else "Dark mode")
 
     def show_user(self, user):
         self.user = user

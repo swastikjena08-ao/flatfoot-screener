@@ -109,10 +109,17 @@ class Engine:
         if self.bunion is None:
             return out
         gray = to_gray(img)
+        h, w = gray.shape
+        whole = (0.0, 0.0, float(w), float(h))
         boxes = None
-        if self.bunion.finder is None or side:
-            h, w = gray.shape
-            boxes = {side or "right": (0.0, 0.0, float(w), float(h))}
+        if self.bunion.finder is None:
+            boxes = {side or "right": whole}
+        elif side:
+            # the person named the foot: still box it with the finder, so a wide X-ray isn't
+            # measured with all its background (one foot found on the wrong side = that foot)
+            found = self.bunion.find_feet(gray)
+            box = found.get(side) or (next(iter(found.values())) if len(found) == 1 else whole)
+            boxes = {side: box}
         feet = self.bunion.predict(gray, boxes)
         out["feet"] = feet
         out["side"] = feet[0]["side"] if len(feet) == 1 else ("both" if feet else "")

@@ -9,6 +9,13 @@ def _date(ts):
     return dt.datetime.fromtimestamp(ts).strftime("%d %b %Y %H:%M") if ts else ""
 
 
+def _remarks(x):
+    notes = loads(x["marks"], {}).get("notes", []) if "marks" in x.keys() else []
+    if not notes:
+        return []
+    return ["Remarks on the X-ray:"] + [f"  {i + 1}. {n['text']}" for i, n in enumerate(notes)]
+
+
 def latest_by_view(xrays):
     """Newest analysed X-ray of each view."""
     out = {}
@@ -53,7 +60,7 @@ def draft(patient, xrays, author, threshold=17.7):
                          f" child's heel (Sever's) {pr['sever']:.0%}.")
             if t != "No heel spur":
                 impression.append(t.lower())
-        lines.append("")
+        lines += _remarks(side) + [""]
     top = picked.get("top")
     if top:
         res, ed = loads(top["results"], {}), loads(top["edits"], {})
@@ -68,7 +75,7 @@ def draft(patient, xrays, author, threshold=17.7):
                          f"intermetatarsal angle {f['ima']:.1f}°{moved}. {t}.")
             if t != "No bunion":
                 impression.append(f"{t.lower()} on the {f['side']} (HVA {f['hva']:.0f}°, IMA {f['ima']:.0f}°)")
-        lines.append("")
+        lines += _remarks(top) + [""]
     lines.append("IMPRESSION")
     lines.append(("Findings: " + "; ".join(impression) + ".") if impression else "No flagged findings on the measured views.")
     lines += ["", "Measurements are drafted by software and must be checked and signed by the treating doctor."]

@@ -5,22 +5,24 @@ HUD text. Drawer wraps it with the toolbar and the strip of the patient's X-rays
 All points are kept in original image pixels, so they match what the models return.
 """
 import math
+import textwrap
+import time
 
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+from PySide6.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QScrollArea,
                                QSlider, QVBoxLayout, QWidget)
 
 import flatfoot_app as ff
 
 from . import theme
-from .engine import resource
 from .widgets import set_on
 
 BUNION_LINES = ((0, 1, "TOE", QColor("#5fd4ff")), (2, 3, "MT1", QColor("#ffb547")), (4, 5, "MT2", QColor("#f472b6")))
 ARCH_COLOURS = {"L10": QColor("#5fd4ff"), "L11": QColor("#f472b6")}
 RULER = 22
+SCAN_SECONDS = 5.0
 HIT = 13
 
 
@@ -40,8 +42,14 @@ def heat_pixmap(heat):
     return QPixmap.fromImage(QImage(rgba.data, w, h, 4 * w, QImage.Format_RGBA8888).copy())
 
 
+PEN_COLOURS = ("#ffd60a", "#ff4d5e", "#5fd4ff", "#ffffff")
+PIN = 11
+
+
 class XrayCanvas(QWidget):
     points_edited = Signal(str, int, object)   # kind ('arch' / 'bunion'), foot index, new points
+    marks_changed = Signal(object)             # the doctor's drawings and notes: {"strokes": [...], "notes": [...]}
+    note_clicked = Signal(int, float, float)   # note index (-1 for a new one), position in image pixels
 
     def __init__(self):
         super().__init__()
@@ -60,10 +68,16 @@ class XrayCanvas(QWidget):
         self.zoom = 1.0
         self.pan = QPointF(0, 0)
         self.hud = {"tl": [], "tr": [], "bl": []}
-        self.empty = QPixmap(resource("assistant", "assets", "lightbox.png"))
         self.empty_text = "Add an X-ray to this patient to start"
         self._drag = None
         self._pan_from = None
+        self._fixed = None       # image rect while rendering a marked copy
+        self.marks = {"strokes": [], "notes": []}
+        self.show_marks = True
+        self.tool = None         # None (move points), "pen" or "note"
+        self.pen_colour = PEN_COLOURS[0]
+        self._stroke = None
+        self._note_drag = None   # [index, press position, moved yet]
         self._scan = None
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -92,23 +106,59 @@ class XrayCanvas(QWidget):
         self.heel_box = heel_box
         self.update()
 
+    def set_marks(self, marks):
+        m = marks or {}
+        self.marks = {"strokes": [dict(st) for st in m.get("strokes", [])], "notes": [dict(n) for n in m.get("notes", [])]}
+        self.update()
+
+    def set_tool(self, tool):
+        self.tool = tool
+        self.setCursor(Qt.CrossCursor if tool else Qt.ArrowCursor)
+
+    def undo_stroke(self):
+        if self.marks["strokes"]:
+            self.marks["strokes"].pop()
+            self.update()
+            self.marks_changed.emit(self.marks)
+
+    def clear_marks(self):
+        self.marks = {"strokes": [], "notes": []}
+        self.update()
+        self.marks_changed.emit(self.marks)
+
+    def _scale(self):
+        return self.image_rect().width() / self.size_[0]
+
+    def _hit_note(self, pos):
+        for i, n in enumerate(self.marks["notes"]):
+            q = self.to_widget(n["x"], n["y"])
+            if (q.x() - pos.x()) ** 2 + (q.y() - pos.y()) ** 2 <= (PIN + 3) ** 2:
+                return i
+        return None
+
     def set_zoom(self, z):
         self.zoom = max(1.0, min(6.0, z))
         if self.zoom == 1.0:
             self.pan = QPointF(0, 0)
         self.update()
 
-    def scanning(self, on):
-        if on:
+    def scanning(self, on, start=None):
+        """Sweep a line down the whole X-ray, top to bottom, every SCAN_SECONDS while the models run.
+        start: time.monotonic() when this X-ray's check began, so switching X-rays keeps the sweep in step."""
+        if on and self._scan is None:
+            self._scan_start = start or time.monotonic()
             self._scan = 0.0
-            self._timer.start(30)
-        else:
+            self._timer.start(16)
+        elif not on:
             self._scan = None
             self._timer.stop()
         self.update()
 
+    def scan_elapsed(self):
+        return 0.0 if self._scan is None else time.monotonic() - self._scan_start
+
     def _tick(self):
-        self._scan = (self._scan + 0.012) % 1.0
+        self._scan = (self.scan_elapsed() % SCAN_SECONDS) / SCAN_SECONDS
         self.update()
 
     # ---------- geometry ----------
@@ -117,6 +167,8 @@ class XrayCanvas(QWidget):
         return QRectF(RULER, RULER, self.width() - RULER - 6, self.height() - RULER - 6)
 
     def image_rect(self):
+        if self._fixed is not None:
+            return self._fixed
         a = self.area()
         w, h = self.size_
         s = min(a.width() / w, a.height() / h) * self.zoom
@@ -155,13 +207,41 @@ class XrayCanvas(QWidget):
     def mousePressEvent(self, e):
         if e.button() != Qt.LeftButton or self.pix is None:
             return
+        i = self._hit_note(e.position()) if self.show_marks else None
+        if i is not None:
+            # a note pin: drag to move it, or a plain click to edit its text (on release)
+            self._note_drag = [i, e.position(), False]
+            self.setCursor(Qt.ClosedHandCursor)
+            return
+        if self.tool == "pen":
+            self.show_marks = True
+            self._stroke = {"c": self.pen_colour, "w": 3.0 / self._scale(), "pts": [self.to_image(e.position())]}
+            self.marks["strokes"].append(self._stroke)
+            self.update()
+            return
+        if self.tool == "note":
+            self.show_marks = True
+            x, y = self.to_image(e.position())
+            self.note_clicked.emit(-1, x, y)
+            return
         self._drag = self._hit(e.position())
         if self._drag is None and self.zoom > 1:
             self._pan_from = (e.position(), QPointF(self.pan))
             self.setCursor(Qt.ClosedHandCursor)
 
     def mouseMoveEvent(self, e):
-        if self._drag:
+        if self._note_drag is not None:
+            i, start, moved = self._note_drag
+            d = e.position() - start
+            if moved or d.x() ** 2 + d.y() ** 2 > 16:
+                self._note_drag[2] = True
+                x, y = self.to_image(e.position())
+                self.marks["notes"][i].update(x=round(x, 1), y=round(y, 1))
+                self.update()
+        elif self._stroke is not None:
+            self._stroke["pts"].append(self.to_image(e.position()))
+            self.update()
+        elif self._drag:
             kind, i, k = self._drag
             p = self.to_image(e.position())
             if kind == "arch":
@@ -174,15 +254,33 @@ class XrayCanvas(QWidget):
             self.pan = pan + (e.position() - start)
             self.update()
         elif self.pix is not None:
-            self.setCursor(Qt.OpenHandCursor if self._hit(e.position()) else Qt.ArrowCursor)
+            over = (self.show_marks and self._hit_note(e.position()) is not None) or \
+                (not self.tool and self._hit(e.position()))
+            self.setCursor(Qt.OpenHandCursor if over else Qt.CrossCursor if self.tool else Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, e):
+        if self._note_drag is not None:
+            i, _, moved = self._note_drag
+            self._note_drag = None
+            self.setCursor(Qt.OpenHandCursor)
+            if moved:
+                self.marks_changed.emit(self.marks)
+            else:
+                n = self.marks["notes"][i]
+                self.note_clicked.emit(i, n["x"], n["y"])
+            return
+        if self._stroke is not None:
+            st = self._stroke
+            self._stroke = None
+            st["pts"] = [[round(x, 1), round(y, 1)] for x, y in st["pts"]]
+            self.marks_changed.emit(self.marks)
+            return
         if self._drag:
             kind, i, _ = self._drag
             pts = {"L10": self.arch["L10"], "L11": self.arch["L11"]} if kind == "arch" else self.feet[i]
             self.points_edited.emit(kind, i, pts)
         self._drag = self._pan_from = None
-        self.setCursor(Qt.ArrowCursor)
+        self.setCursor(Qt.CrossCursor if self.tool else Qt.ArrowCursor)
 
     def wheelEvent(self, e):
         if self.pix is not None:
@@ -216,40 +314,94 @@ class XrayCanvas(QWidget):
             p.save()
             p.setClipRect(a)
             r = self.image_rect()
-            p.drawPixmap(r, self.pix, QRectF(self.pix.rect()))
-            if self.heat_on in self.heats:
-                pix, (x0, y0, x1, y1) = self.heats[self.heat_on]
-                p.setOpacity(self.heat_alpha)
-                tl, br = self.to_widget(x0, y0), self.to_widget(x1, y1)
-                p.drawPixmap(QRectF(tl, br), pix, QRectF(pix.rect()))
-                p.setOpacity(1)
-            if self.show_points:
-                self._paint_heel(p)
-                self._paint_arch(p)
-                self._paint_feet(p)
+            self._paint_content(p, r)
             if self._scan is not None:
                 yy = r.top() + self._scan * r.height()
+                glow = QColor(theme.X_CYAN)
+                glow.setAlpha(45)
+                p.fillRect(QRectF(r.left(), yy - 26, r.width(), 26), glow)
                 p.setPen(QPen(theme.X_CYAN, 2))
                 p.drawLine(QPointF(r.left(), yy), QPointF(r.right(), yy))
-                glow = QColor(theme.X_CYAN)
-                glow.setAlpha(40)
-                p.fillRect(QRectF(r.left(), yy - 18, r.width(), 18), glow)
             p.restore()
         self._paint_rulers(p, a)
         self._paint_hud(p, a)
         p.end()
 
-    def _paint_empty(self, p, a):
-        if not self.empty.isNull():
-            s = min(a.width() / self.empty.width(), a.height() / self.empty.height())
-            w, h = self.empty.width() * s, self.empty.height() * s
-            p.setOpacity(0.55)
-            p.drawPixmap(QRectF(a.center().x() - w / 2, a.center().y() - h / 2, w, h), self.empty,
-                         QRectF(self.empty.rect()))
+    def _paint_content(self, p, r):
+        p.drawPixmap(r, self.pix, QRectF(self.pix.rect()))
+        if self.heat_on in self.heats:
+            pix, (x0, y0, x1, y1) = self.heats[self.heat_on]
+            p.setOpacity(self.heat_alpha)
+            p.drawPixmap(QRectF(self.to_widget(x0, y0), self.to_widget(x1, y1)), pix, QRectF(pix.rect()))
             p.setOpacity(1)
-        p.setPen(theme.X_INK)
+        if self.show_points:
+            self._paint_heel(p)
+            self._paint_arch(p)
+            self._paint_feet(p)
+        if self.show_marks:
+            self._paint_marks(p)
+
+    def _paint_marks(self, p):
+        s = self._scale()
+        for st in self.marks["strokes"]:
+            pts = [self.to_widget(x, y) for x, y in st["pts"]]
+            pen = QPen(QColor(st["c"]), max(1.5, st["w"] * s), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+            p.setPen(pen)
+            if len(pts) == 1:
+                p.drawPoint(pts[0])
+            for a, b in zip(pts, pts[1:]):
+                p.drawLine(a, b)
+        p.setFont(QFont(theme.MONO, 9, QFont.Bold))
+        fm = p.fontMetrics()
+        for i, n in enumerate(self.marks["notes"]):
+            q = self.to_widget(n["x"], n["y"])
+            p.setPen(QPen(QColor(2, 4, 7), 2))
+            p.setBrush(QColor("#ffd60a"))
+            p.drawEllipse(q, PIN, PIN)
+            p.setPen(QColor(2, 4, 7))
+            p.drawText(QRectF(q.x() - PIN, q.y() - PIN, 2 * PIN, 2 * PIN), Qt.AlignCenter, str(i + 1))
+            text = n.get("text", "")
+            if text:
+                lines = textwrap.wrap(text, 30)[:5]
+                w = max(fm.horizontalAdvance(t) for t in lines) + 14
+                h = fm.height() * len(lines) + 8
+                right = self._fixed.right() if self._fixed is not None else self.area().right()
+                x0 = q.x() + PIN + 6 if q.x() + PIN + 6 + w <= right else q.x() - PIN - 6 - w
+                box = QRectF(x0, q.y() - h / 2, w, h)
+                p.setPen(QPen(QColor("#ffd60a"), 1))
+                p.setBrush(QColor(2, 4, 7, 215))
+                p.drawRoundedRect(box, 5, 5)
+                p.setPen(QColor("#fff6cc"))
+                for k, t in enumerate(lines):
+                    p.drawText(QPointF(box.x() + 7, box.y() + 4 + fm.ascent() + k * fm.height()), t)
+
+    def render_marked(self, long_side=1600):
+        """The X-ray with the heatmap shown now, the points, lines and findings drawn on, as a QImage."""
+        if self.pix is None:
+            return None
+        w, h = self.size_
+        s = long_side / max(w, h)
+        out = QImage(round(w * s), round(h * s), QImage.Format_RGB32)
+        out.fill(theme.X_BG)
+        self._fixed = QRectF(0, 0, out.width(), out.height())
+        try:
+            p = QPainter(out)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            self._paint_content(p, self._fixed)
+            hud, self.hud = self.hud, {**self.hud, "br": []}
+            zoom, self.zoom = self.zoom, None
+            self._paint_hud(p, QRectF(0, 0, out.width(), out.height()))
+            self.hud, self.zoom = hud, zoom
+            p.end()
+        finally:
+            self._fixed = None
+        return out
+
+    def _paint_empty(self, p, a):
+        p.setPen(theme.X_MUTED)
         p.setFont(QFont(theme.MONO, 11))
-        p.drawText(a.adjusted(0, 0, 0, -24), Qt.AlignHCenter | Qt.AlignBottom, self.empty_text)
+        p.drawText(a, Qt.AlignCenter, self.empty_text)
 
     def _label(self, p, at, text, colour):
         p.setFont(QFont(theme.MONO, 9, QFont.Bold))
@@ -359,11 +511,11 @@ class XrayCanvas(QWidget):
         lh = fm.height() + 2
         pad = 12
         colours = {"red": theme.X_RED, "amber": theme.X_AMBER, "green": QColor("#6ee7a8")}
-        z = f"MAG {self.zoom:.1f}x"
+        z = f"MAG {self.zoom:.1f}x" if self.zoom and self.pix is not None else None
         blocks = (("tl", [(t, theme.X_INK if i == 0 else theme.X_MUTED) for i, t in enumerate(self.hud["tl"])]),
                   ("tr", [(t, theme.X_MUTED) for t in self.hud["tr"]]),
                   ("bl", [(t, colours.get(c, theme.X_INK)) for t, c in self.hud["bl"]]),
-                  ("br", [(z, theme.X_MUTED)]))
+                  ("br", [(z, theme.X_MUTED)] if z else []))
         for corner, rows in blocks:
             if not rows:
                 continue
@@ -380,6 +532,8 @@ class XrayCanvas(QWidget):
 
 
 class Thumb(QPushButton):
+    removed = Signal(int)
+
     def __init__(self, xray_id, pix, caption):
         super().__init__()
         self.xray_id = xray_id
@@ -398,11 +552,24 @@ class Thumb(QPushButton):
         cap.setStyleSheet("background: transparent; border: none; font-size: 10px;")
         lay.addWidget(img)
         lay.addWidget(cap)
+        self.close_btn = QPushButton("×", self)
+        self.close_btn.setObjectName("thumbx")
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setToolTip("Delete this X-ray")
+        self.close_btn.setFixedSize(22, 22)
+        self.close_btn.move(self.width() - 26, 4)
+        self.close_btn.setStyleSheet(
+            "QPushButton#thumbx { min-height: 22px; max-height: 22px; padding: 0; border-radius: 11px;"
+            " background: rgba(2,4,7,0.85); color: #dcf3ff; border: 1px solid rgba(110,205,255,0.45);"
+            " font-size: 14px; font-weight: 700; }"
+            " QPushButton#thumbx:hover { background: #ff6b78; color: #020407; border-color: #ff6b78; }")
+        self.close_btn.clicked.connect(lambda: self.removed.emit(self.xray_id))
 
 
 class Drawer(QFrame):
     """Black lightbox: toolbar, canvas and the X-ray strip."""
     picked = Signal(int)
+    remove_clicked = Signal(int)
     add_clicked = Signal()
     reset_clicked = Signal()
 
@@ -444,7 +611,42 @@ class Drawer(QFrame):
         bar.addWidget(self.zoom)
         lay.addLayout(bar)
 
+        tools = QHBoxLayout()
+        tools.setSpacing(8)
+        tools.addWidget(QLabel("MARK UP"))
+        self.tool_buttons = {}
+        for key, text in (("pen", "✎  PEN"), ("note", "✚  NOTE")):
+            b = QPushButton(text)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setToolTip("Draw on the X-ray" if key == "pen" else "Click the X-ray to pin a typed remark; click a pin to edit it")
+            b.clicked.connect(lambda _=False, k=key: self.pick_tool(k))
+            self.tool_buttons[key] = b
+            tools.addWidget(b)
+        self.colour_buttons = {}
+        for c in PEN_COLOURS:
+            b = QPushButton("")
+            b.setObjectName("swatch")
+            b.setCursor(Qt.PointingHandCursor)
+            b.setFixedSize(24, 24)
+            b.clicked.connect(lambda _=False, col=c: self.pick_colour(col))
+            self.colour_buttons[c] = b
+            tools.addWidget(b)
+        self.undo = QPushButton("UNDO LINE")
+        self.undo.setCursor(Qt.PointingHandCursor)
+        self.clear = QPushButton("CLEAR MARKS")
+        self.clear.setCursor(Qt.PointingHandCursor)
+        tools.addWidget(self.undo)
+        tools.addWidget(self.clear)
+        self.show_marks = QCheckBox("SHOW MARKS")
+        self.show_marks.setChecked(True)
+        self.show_marks.toggled.connect(self._toggle_marks)
+        tools.addWidget(self.show_marks)
+        tools.addStretch(1)
+        lay.addLayout(tools)
+
         self.canvas = XrayCanvas()
+        self.undo.clicked.connect(lambda: self.canvas.undo_stroke())
+        self.clear.clicked.connect(self._clear_marks)
         self.canvas.zoom_changed = lambda: self._sync_zoom()
         lay.addWidget(self.canvas, 1)
 
@@ -468,7 +670,36 @@ class Drawer(QFrame):
         strip.addWidget(self.add)
         lay.addLayout(strip)
         self.set_heat("off")
+        self.pick_colour(PEN_COLOURS[0], activate=False)
         self._thumb_buttons = []
+
+    def pick_tool(self, key):
+        """Click a tool to use it, click it again to go back to moving the model's points."""
+        tool = None if self.canvas.tool == key else key
+        self.canvas.set_tool(tool)
+        for k, b in self.tool_buttons.items():
+            set_on(b, k == tool)
+        if tool and not self.show_marks.isChecked():
+            self.show_marks.setChecked(True)
+
+    def pick_colour(self, colour, activate=True):
+        self.canvas.pen_colour = colour
+        for c, b in self.colour_buttons.items():
+            ring = "#ffffff" if c == colour else "rgba(110,205,255,0.35)"
+            width = 3 if c == colour else 1
+            b.setStyleSheet(f"QPushButton#swatch {{ background: {c}; border: {width}px solid {ring}; border-radius: 12px;"
+                            " min-height: 24px; max-height: 24px; min-width: 24px; max-width: 24px; padding: 0; }")
+        if activate and self.canvas.tool != "pen":
+            self.pick_tool("pen")
+
+    def _toggle_marks(self, on):
+        self.canvas.show_marks = on
+        self.canvas.update()
+
+    def _clear_marks(self):
+        if self.canvas.marks["strokes"] or self.canvas.marks["notes"]:
+            if QMessageBox.question(self, "Clear marks", "Remove all drawings and notes from this X-ray?") == QMessageBox.Yes:
+                self.canvas.clear_marks()
 
     def _sync_zoom(self):
         self.zoom.blockSignals(True)
@@ -503,6 +734,7 @@ class Drawer(QFrame):
         for xid, pix, cap in items:
             t = Thumb(xid, pix, cap)
             t.clicked.connect(lambda _=False, i=xid: self.picked.emit(i))
+            t.removed.connect(self.remove_clicked)
             set_on(t, xid == current)
             self.thumbs.addWidget(t)
             self._thumb_buttons.append(t)

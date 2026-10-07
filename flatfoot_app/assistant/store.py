@@ -61,7 +61,9 @@ CREATE TABLE IF NOT EXISTS xrays (
     status TEXT NOT NULL DEFAULT 'new',
     note TEXT NOT NULL DEFAULT '',
     signed_by INTEGER REFERENCES users(id),
-    signed_at REAL
+    signed_at REAL,
+    marked TEXT NOT NULL DEFAULT '',
+    marks TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS audit (
     id INTEGER PRIMARY KEY,
@@ -91,7 +93,28 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(SCHEMA)
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(xrays)")}
+        if "marked" not in cols:          # databases made before marked copies existed
+            self.db.execute("ALTER TABLE xrays ADD COLUMN marked TEXT NOT NULL DEFAULT ''")
+        if "marks" not in cols:           # ... and before the doctor's drawings and notes
+            self.db.execute("ALTER TABLE xrays ADD COLUMN marks TEXT NOT NULL DEFAULT '{}'")
+        self.db.commit()
         self.key_hashes = auth.load_key_hashes(key_file) if key_file else set()
+
+    # ---------- preferences for this PC (light/dark look) ----------
+
+    def prefs(self):
+        try:
+            with open(os.path.join(self.folder, "prefs.json"), encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def set_pref(self, key, value):
+        p = self.prefs()
+        p[key] = value
+        with open(os.path.join(self.folder, "prefs.json"), "w", encoding="utf-8") as f:
+            json.dump(p, f)
 
     def close(self):
         self.db.close()
@@ -279,6 +302,33 @@ class Store:
     def xray_path(self, row):
         return os.path.join(self.folder, row["file"])
 
+    def delete_xray(self, user_id, xray_id):
+        """Removes the X-ray, its results and its saved copies from this PC."""
+        x = self.xray(xray_id)
+        if x is None:
+            return
+        p = self.patient(x["patient_id"])
+        for rel in (x["file"], x["marked"]):
+            if rel:
+                try:
+                    os.remove(os.path.join(self.folder, rel))
+                except OSError:
+                    pass
+        self.db.execute("DELETE FROM xrays WHERE id = ?", (xray_id,))
+        self.db.execute("UPDATE patients SET updated_at = ? WHERE id = ?", (time.time(), x["patient_id"]))
+        self.db.commit()
+        self.log(user_id, "delete_xray", f"{p['code'] if p else '?'}: {x['original_name']} ({x['view']})")
+
+    def marked_path(self, row):
+        """Where the app keeps this X-ray's marked copy (in the data folder, next to the X-ray)."""
+        base = os.path.splitext(row["file"])[0]
+        return os.path.join(self.folder, base + "_marked.png")
+
+    def set_marked(self, user_id, xray_id, path):
+        self.db.execute("UPDATE xrays SET marked = ? WHERE id = ?", (os.path.relpath(path, self.folder), xray_id))
+        self.db.commit()
+        self.log(user_id, "save_marked", str(xray_id))
+
     def save_results(self, xray_id, results, side=None):
         """Model output for one X-ray. A fresh run clears the hand edits and needs review again."""
         self.db.execute("UPDATE xrays SET results = ?, edits = '{}', status = 'review', signed_by = NULL,"
@@ -290,6 +340,12 @@ class Store:
         self.db.execute("UPDATE xrays SET edits = ? WHERE id = ?", (json.dumps(edits), xray_id))
         self.db.commit()
         self.log(user_id, "edit_points", str(xray_id))
+
+    def save_marks(self, user_id, xray_id, marks):
+        """The doctor's drawings and typed notes on the X-ray. Kept when the models re-check it."""
+        self.db.execute("UPDATE xrays SET marks = ? WHERE id = ?", (json.dumps(marks), xray_id))
+        self.db.commit()
+        self.log(user_id, "edit_marks", str(xray_id))
 
     def save_note(self, user_id, xray_id, note):
         self.db.execute("UPDATE xrays SET note = ? WHERE id = ?", (note, xray_id))
