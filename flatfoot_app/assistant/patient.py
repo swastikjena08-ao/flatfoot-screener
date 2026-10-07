@@ -6,8 +6,8 @@ import numpy as np
 from PySide6.QtCore import QStandardPaths, Qt, QTimer, Signal
 from PySide6.QtWidgets import QFileDialog, QFrame, QInputDialog, QHBoxLayout, QMessageBox, QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget
 
-import flatfoot_app as ff
 
+from . import flatfoot as ff
 from . import engine, report
 from .dialogs import AddXrayDialog, PatientDialog, ReportDialog, thumb_of
 from .pages import patient_facts, when

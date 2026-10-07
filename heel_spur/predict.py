@@ -1,6 +1,6 @@
 """Heel spur check for the app: one lateral foot X-ray in, a result out.
 
-Needs only numpy, Pillow and onnxruntime (no PyTorch), like flatfoot_app.py.
+Needs only numpy, Pillow and onnxruntime (no PyTorch), like the flat foot models (flatfoot_app/assistant/flatfoot.py).
 
     from heel_spur.predict import HeelSpur
     hs = HeelSpur("flatfoot_app")          # folder with heel_finder.onnx, heel_spur.onnx, heel_spur.json

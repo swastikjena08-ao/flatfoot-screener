@@ -1,6 +1,6 @@
 """Fracture flag for the app: one foot or ankle X-ray in, a result out.
 
-Needs only numpy, Pillow and onnxruntime (no PyTorch), like flatfoot_app.py.
+Needs only numpy, Pillow and onnxruntime (no PyTorch), like the flat foot models (flatfoot_app/assistant/flatfoot.py).
 
     from fracture.predict import Fracture
     fr = Fracture("flatfoot_app")          # folder with fracture.onnx, fracture.json

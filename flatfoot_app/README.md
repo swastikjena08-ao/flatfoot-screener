@@ -1,26 +1,25 @@
-# Flatfoot X-ray Screener
+# Foot X-ray Assistant
 
-A Windows desktop app that screens lateral foot X-rays for **pes planus (flatfoot)**. Drop in an X-ray and it gives you a verdict, a heatmap of where the model looked, and the **L10→L11 arch angle** measured from two bone landmarks. Everything runs offline on your own PC, with no uploads and no GPU needed.
-
-![Flatfoot X-ray Screener analysing a left foot](docs/screenshot.png)
+A Windows desktop app for foot X-rays: doctor sign-in, patient profiles, and automatic checks on every X-ray (flat foot heel bone angle, heel spur, bunion angles and a fracture flag). Everything runs offline on your own PC, with no uploads and no GPU needed.
 
 > ⚠️ **Screening aid, not a medical device.** Results must be reviewed by a clinician.
 
----
+## Run it
 
-## Features
+Requires Python 3.10 or newer.
 
-- **Two independent models**
-  - **Classifier**: ResNet-18 that outputs the probability of pes planus, plus a class-activation heatmap.
-  - **Landmark model**: ResNet-18 heatmap network that locates landmarks **L10** and **L11** and measures the angle of the line between them against the horizontal.
-- **Clear verdicts**: *Pes planus likely*, *Normal arch likely*, or **Borderline** (p between 0.35 and 0.65), which flags the image for review.
-- **Explainable**: heatmap overlay with adjustable opacity, to check that the model looked at the heel and midfoot rather than a text marker.
-- **Editable landmarks**: drag L10 or L11 to correct them; the angle updates live, and *Reset points* restores the model's positions.
-- **Left and right feet**: the foot side is detected automatically, or you can set it yourself (see [How left feet work](#how-left-feet-work)).
-- **Flexible input**: open a file, drag and drop, or paste with Ctrl+V. Accepts PNG, JPG, BMP, TIFF and WebP, including **16-bit TIFF** exports and phone photos with **EXIF rotation**.
-- **Responsive**: inference runs on a background thread, so the window never freezes, and the display stays sharp on high-DPI screens.
+```bash
+git clone https://github.com/swastikjena08-ao/flatfoot-screener
+cd flatfoot-screener/flatfoot_app
+pip install -r requirements.txt
+python foot_assistant.py
+```
 
-## How it works
+In VS Code, open the `flatfoot-screener` folder and press **F5** ("Foot X-ray Assistant" in `.vscode/launch.json`).
+
+## Flat foot models
+
+The flat foot check uses two models, run by `assistant/flatfoot.py`:
 
 ```
 X-ray ──► normalise (EXIF rotation, 16-bit → 8-bit)
@@ -40,9 +39,9 @@ Angle cut-off: **17.7°**. Below it is consistent with pes planus. Training aver
 
 ### How left feet work
 
-Both models were trained in Google Colab on **right-foot X-rays only** (toes pointing left). A left foot is mirrored before inference, and the heatmap and landmarks are mapped back onto the original image, so you always see results on the X-ray you opened. With *Auto-detect* on, the app runs the landmark model on the image and on its mirror image, and keeps whichever orientation it is more confident about.
+Both models were trained in Google Colab on **right-foot X-rays only** (toes pointing left). A left foot is mirrored before inference, and the heatmap and landmarks are mapped back onto the original image, so you always see results on the X-ray you opened. The app runs the landmark model on the image and on its mirror image, and keeps whichever orientation it is more confident about.
 
-## Results
+### Results
 
 Tested on the Pesplanus Dataset (842 files, 540 unique images), with **4 independent runs**:
 
@@ -57,58 +56,7 @@ Tested on the Pesplanus Dataset (842 files, 540 unique images), with **4 indepen
 
 > These images were very likely part of the training data, so the numbers show how well the models learned this dataset, **not** expected accuracy on new patients. Validate on unseen X-rays before relying on them.
 
-## Getting started
-
-### Run the app (Windows)
-
-Download `Flatfoot Screener.exe` from the Releases page and double-click it. It's a single file with both models built in. The first launch takes a few seconds while it unpacks.
-
-### Run from source
-
-Requires Python 3.10 or newer (developed on 3.14).
-
-```bash
-git clone <your-repo-url>
-cd flatfoot_app
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python foot_assistant.py              # the Foot X-ray Assistant (python flatfoot_app.py opens it too)
-```
-
-`model.onnx`, `landmarks.onnx` and `landmarks.json` must be in the same folder as `flatfoot_app.py`.
-
-### Keyboard shortcuts
-
-| Keys | Action |
-|---|---|
-| Ctrl+O | Open an X-ray |
-| Ctrl+V | Paste an image or file from the clipboard |
-| Delete | Remove the current image |
-
-## Tests
-
-```bash
-pip install pytest
-python -m pytest tests
-```
-
-There are 20 tests. They cover 16-bit and EXIF input handling, left/right mirroring (a mirrored right foot must give the identical verdict and angle), side detection with the real models, background analysis and stale-result handling, the heatmap overlay, and high-DPI rendering. The UI tests run headless.
-
-## Build the .exe
-
-```bash
-pip install pyinstaller
-pyinstaller --noconfirm --onefile --windowed --name "Flatfoot Screener" ^
-  --add-data "model.onnx;." --add-data "landmarks.onnx;." --add-data "landmarks.json;." ^
-  flatfoot_app.py
-```
-
-The executable is written to `dist\Flatfoot Screener.exe` (about 180 MB). It's larger than GitHub's 100 MB file limit, so publish it as a **Release asset** rather than committing it.
-
-## Foot X-ray assistant (doctor accounts and patients)
-
-`foot_assistant.py` is the full clinic app built on the same models: doctor sign-in, patient profiles, and three checks per patient.
+## Using the app
 
 ```
 pip install -r requirements.txt
@@ -153,20 +101,30 @@ pyinstaller --noconfirm --onedir --windowed --name "Foot X-ray Assistant" ^
 
 The app is written to `dist\Foot X-ray Assistant\`. Patient data stays in the data folder, not next to the .exe, so a rebuilt app keeps every patient.
 
+## Tests
+
+```bash
+pip install pytest
+python -m pytest tests
+```
+
+`tests/test_assistant.py` covers accounts, activation keys, patient storage, the model pipeline and the main screens (run headless). `tests/test_flatfoot_models.py` covers 16-bit and EXIF input handling and left/right mirroring; its real-model tests need `tests/data/10L.JPG` and `10R.JPG`, which are kept out of the repo.
+
 ## Project structure
 
 ```
 flatfoot_app/
-├── flatfoot_app.py      # the app: preprocessing, inference, UI
-├── model.onnx           # pes planus classifier
+├── foot_assistant.py    # starts the app
+├── assistant/           # the app: accounts, patients, viewer, report, model engine
+│   └── flatfoot.py      # flat foot models: preprocessing, inference, angle maths
+├── model.onnx           # flat foot classifier
 ├── landmarks.onnx       # L10 / L11 landmark model
 ├── landmarks.json       # landmark names, input size, angle cut-off
-├── requirements.txt
-├── tests/
-│   ├── test_flatfoot_app.py
-│   └── data/            # two sample X-rays (left and right foot)
-└── docs/
-    └── screenshot.png
+├── heel_finder.onnx, heel_spur.onnx, heel_spur.json
+├── fracture.json        # fracture.onnx is made with ../fracture/export.py
+├── models/bunion/       # bunion .onnx files, copied in by hand
+├── tools/               # check_models.py, make_keys.py
+└── tests/
 ```
 
 ## Notes for the repository

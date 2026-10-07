@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDialog, QFileDialog, QH
 
 from PIL import Image
 
-import flatfoot_app as ff
 
+from . import flatfoot as ff
 from . import engine, theme
 from .store import StoreError
 from .widgets import button, card, chip, clear_layout, field, label, line_edit

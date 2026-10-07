@@ -1,6 +1,6 @@
 """X-ray check for the app: says what kind of X-ray was uploaded and which tools can read it.
 
-Needs only numpy, Pillow and onnxruntime (no PyTorch), like flatfoot_app.py.
+Needs only numpy, Pillow and onnxruntime (no PyTorch), like the flat foot models (flatfoot_app/assistant/flatfoot.py).
 
     from view_check.predict import ViewCheck
     vc = ViewCheck("flatfoot_app")      # folder with view_check.onnx and view_check.json

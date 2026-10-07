@@ -14,8 +14,8 @@ from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QScrollArea,
                                QSlider, QVBoxLayout, QWidget)
 
-import flatfoot_app as ff
 
+from . import flatfoot as ff
 from . import theme
 from .widgets import set_on
 

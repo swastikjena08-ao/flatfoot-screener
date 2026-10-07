@@ -1,7 +1,7 @@
 """Runs the models on one X-ray. No UI here, so it is safe off the main thread
 and easy to test.
 
-* Side view: flat foot (flatfoot_app.py: classifier + L10/L11 heel bone angle) and
+* Side view: flat foot (assistant/flatfoot.py: classifier + L10/L11 heel bone angle) and
   heel spur (heel_spur/predict.py).
 * Top-down view: bunion angles (bunion/predict.py), one result per foot.
 * Both views: fracture flag (fracture/predict.py), a probability and a map of where.
@@ -23,7 +23,7 @@ for p in (APP_DIR, REPO):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import flatfoot_app as ff  # noqa: E402  the original app module: models, preprocessing, angle maths
+from . import flatfoot as ff  # noqa: E402  flat foot models, preprocessing, angle maths
 
 
 def resource(*parts):

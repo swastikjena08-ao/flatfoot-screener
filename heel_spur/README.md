@@ -29,7 +29,7 @@ python export.py --locate work/locate/best.pt --classify work/classify/best.pt -
 
 ## Use in the app
 
-`predict.py` runs the exported models with onnxruntime only (no PyTorch), the same way `flatfoot_app.py` does:
+`predict.py` runs the exported models with onnxruntime only (no PyTorch), the same way `flatfoot_app/assistant/flatfoot.py` does:
 
 ```python
 from heel_spur.predict import HeelSpur
