@@ -64,9 +64,12 @@ Scores are recall per view (share of each view sorted correctly); "balanced" is 
 | | Held-out test (1,738) | FracAtlas only (581) | Outside test, new hospital (693) |
 | --- | --- | --- | --- |
 | **v2** (shipped) | 99.1% correct, 97.6% balanced | 98.5% correct | 98.1% correct, **83.1% balanced** |
+| v3 (20 rounds instead of 8, not used) | 98.8% correct, 96.6% balanced | 98.5% correct | 97.8% correct, 72.5% balanced |
 | v1 (no UNIFESP feet in training) | 99.0% correct, 96.4% balanced | 98.3% correct | 97.4% correct, 60.9% balanced |
 
 Outside test, v2, per view: not a foot 649/653, side 16/21, top-down 9/11, angled 6/8.
+
+v3 trained the same way for 20 rounds. It scored best on the check set (98.7% balanced at round 12, v2 about 98.6%) but worse on both tests, mostly side and angled views from the new hospital (side 13/21, angled 3/8). The extra rounds fit the training hospitals more closely, so v2 stays.
 
 v1 learned that anything that looked like a UNIFESP X-ray was "not a foot" (every UNIFESP image it trained on was a non-foot) and turned away 10 of the 40 outside feet. v2 adds the 78 sorted UNIFESP feet to training; it turns away 2.
 
