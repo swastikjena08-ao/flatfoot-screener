@@ -28,7 +28,7 @@ python train.py --cache work/cache.npz --init ../flatfoot_app/model.onnx --out w
 python evaluate.py --cache work/cache.npz --model work/run/best.pt --out work/run --overlays work/overlays
 ```
 
-`prep.py` splits 65/15/20. FracAtlas has no patient ids, so it keeps blocks of 10 consecutive image ids (views of one patient sit next to each other) and near-identical copies (same perceptual hash) in one split. `train.py` uses the GPU when one is available. `evaluate.py` picks the flag threshold on the validation split (catch 90% of its fractures) and reports the test split; "points at break" means the hottest cell overlaps a drawn fracture box.
+`prep.py` splits 65/15/20, except groups holding a foot or ankle fracture, which split 75/10/15 so more of these scarce breaks reach training. FracAtlas has no patient ids, so it keeps blocks of 10 consecutive image ids (views of one patient sit next to each other) and near-identical copies (same perceptual hash) in one split. `train.py` uses the GPU when one is available. `evaluate.py` picks the flag threshold on the validation split (catch 90% of its fractures) and reports the test split; "points at break" means the hottest cell overlaps a drawn fracture box.
 
 `train_colab.ipynb` reruns everything on a Colab GPU at 512 px for 40 rounds.
 
