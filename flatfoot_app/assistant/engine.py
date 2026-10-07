@@ -4,7 +4,6 @@ and easy to test.
 * Side view: flat foot (flatfoot_app.py: classifier + L10/L11 heel bone angle) and
   heel spur (heel_spur/predict.py).
 * Top-down view: bunion angles (bunion/predict.py), one result per foot.
-* Both views: fracture flag (fracture/predict.py), a demo-grade hint, never an all-clear.
 
 Each model's own predict code is imported and called unchanged, so the app gives the
 same answers as the model's training repo (tools/check_models.py checks this).
@@ -18,7 +17,7 @@ from PIL import Image, ImageOps
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.dirname(HERE)            # flatfoot_app/
-REPO = os.path.dirname(APP_DIR)            # repo root, holds heel_spur/, bunion/ and fracture/
+REPO = os.path.dirname(APP_DIR)            # repo root, holds heel_spur/ and bunion/
 for p in (APP_DIR, REPO):
     if p not in sys.path:
         sys.path.insert(0, p)
@@ -57,7 +56,7 @@ def guess_view(img):
 class Engine:
     def __init__(self, bunion_dir=None):
         self.status = {}
-        self.flat_clf = self.flat_lm = self.spur = self.bunion = self.fracture = None
+        self.flat_clf = self.flat_lm = self.spur = self.bunion = None
         try:
             import onnxruntime as ort
             self.flat_clf = ort.InferenceSession(resource("model.onnx"), providers=["CPUExecutionProvider"])
@@ -80,14 +79,6 @@ class Engine:
             self.status["bunion"] = f"not installed: copy the bunion models into {bunion_dir}"
         except Exception as e:  # noqa: BLE001
             self.status["bunion"] = f"not loaded: {e}"
-        try:
-            from fracture.predict import Fracture
-            self.fracture = Fracture(resource())
-            self.status["fracture"] = "ready"
-        except FileNotFoundError:
-            self.status["fracture"] = "not installed: export fracture.onnx with fracture/export.py"
-        except Exception as e:  # noqa: BLE001
-            self.status["fracture"] = f"not loaded: {e}"
         self.lm_meta = self.flat_lm.meta if self.flat_lm else {"threshold_deg": 17.7}
 
     def ready(self, name):
@@ -134,16 +125,8 @@ class Engine:
         out["side"] = feet[0]["side"] if len(feet) == 1 else ("both" if feet else "")
         return out
 
-    def analyse_fracture(self, img):
-        r = self.fracture.predict(img)
-        return {"p": r["p"], "flag": bool(r["flag"]), "threshold": r["threshold"],
-                "cells": np.asarray(r["cells"]).tolist(), "square": list(r["square"])}
-
     def analyse(self, img, view, side=None):
-        out = self.analyse_side(img, side) if view == "side" else self.analyse_top(img, side)
-        if self.fracture is not None:
-            out["fracture"] = self.analyse_fracture(img)
-        return out
+        return self.analyse_side(img, side) if view == "side" else self.analyse_top(img, side)
 
 
 # ---------- reading results (with the doctor's point edits applied) ----------
@@ -198,28 +181,6 @@ def spur_class(spur):
     return ("Possible heel spur", "amber") if p["spur"] >= 0.3 else ("No heel spur", "green")
 
 
-def fracture_class(fr):
-    if not fr:
-        return None, ""
-    return ("Possible fracture", "red") if fr["flag"] else ("No fracture flagged", "grey")
-
-
-def fracture_heat(fr, w, h, max_side=512):
-    """The fracture map cut to the X-ray (w x h image pixels), at most max_side px on its long side.
-
-    Flagged X-rays are scaled to their hottest cell so the spot stands out; the rest keep the
-    raw cell probabilities, which stay faint."""
-    cells = np.asarray(fr["cells"], np.float32)
-    if fr["flag"]:
-        cells = cells / max(float(cells.max()), 1e-6)
-    x0, y0, x1, y1 = fr["square"]
-    s = min(1.0, max_side / max(w, h))
-    n = max(2, round((x1 - x0) * s))
-    big = ff.upsample_cam(cells, n, n)
-    ox, oy = round(-x0 * s), round(-y0 * s)
-    return big[oy:oy + max(2, round(h * s)), ox:ox + max(2, round(w * s))]
-
-
 def findings(results, edits, threshold=17.7):
     """Short labels for lists and the report: [(text, colour)]."""
     out = []
@@ -235,9 +196,6 @@ def findings(results, edits, threshold=17.7):
     for f in bunion_feet(results, edits):
         t, c = bunion_class(f["hva"], f["ima"])
         out.append((f"{t} ({f['side']})" if len(results.get("feet", [])) > 1 else t, c))
-    fr = results.get("fracture")
-    if fr and fr["flag"]:
-        out.append(("Possible fracture", "red"))
     return out
 
 

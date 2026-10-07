@@ -145,8 +145,6 @@ def test_side_view_pipeline(eng):
     r = eng.analyse(img, "side")
     assert 0 <= r["flat"]["p"] <= 1 and set(r["flat"]["points"]) == {"L10", "L11"}
     assert abs(sum(r["spur"]["probs"].values()) - 1) < 1e-4
-    if eng.ready("fracture"):
-        assert 0 <= r["fracture"]["p"] <= 1 and len(r["fracture"]["cells"]) == len(r["fracture"]["cells"][0])
     json.dumps(r)        # results must be storable as JSON
 
 
@@ -227,32 +225,6 @@ def test_patient_page_and_report(window, tmp_path):
     assert json.loads(w.store.xray(x["id"])["edits"]) == {}
     w.go_home()
     assert w.home.rows.count() >= 1
-
-
-def test_fracture_card_heatmap_and_report(window, tmp_path):
-    w = window
-    u = w.store.activate(KEYS[0], "dr.mehta", "Asha Mehta", "clinic2026")
-    w.enter(u)
-    p = w.store.add_patient(u["id"], "P-2", "Mira Shah", "Female", "1990-01-01")
-    src = tmp_path / "t.png"
-    Image.new("L", (300, 400), 80).save(src)
-    x = w.store.add_xray(u["id"], p["id"], str(src), "top")
-    cells = np.zeros((16, 16))
-    cells[4, 8] = 0.6
-    # 300 x 400 X-ray letterboxed into a 400 px square: 50 px of padding on each side
-    res = {"view": "top", "feet": [], "fracture": {"p": 0.4, "flag": True, "threshold": 0.15,
-                                                   "cells": cells.tolist(), "square": [-50, 0, 350, 400]}}
-    w.store.save_results(x["id"], res, "")
-    w.open_patient(p["id"])
-    heat = engine.fracture_heat(res["fracture"], 300, 400)
-    assert heat.shape == (400, 300) and heat.max() == pytest.approx(1, abs=0.05)
-    y, xx = np.unravel_index(heat.argmax(), heat.shape)
-    assert abs(y - 4.5 * 25) < 15 and abs(xx - (8.5 * 25 - 50)) < 15
-    assert "break" in w.patient.drawer.canvas.heats
-    assert ("Possible fracture", "red") in engine.findings(res, {})
-    text = report.draft(w.patient.patient, w.store.xrays(p["id"]), u)
-    assert "Fracture flag (demo model" in text and "possible fracture flagged" in text
-    assert engine.fracture_class({**res["fracture"], "flag": False})[0] == "No fracture flagged"
 
 
 def test_named_foot_still_uses_foot_finder(eng, monkeypatch):

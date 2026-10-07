@@ -111,8 +111,7 @@ class PatientPage(QWidget):
         self.arch_card = ModelCard("Arch · flat foot", self.score_line("flat"))
         self.spur_card = ModelCard("Heel spur", self.score_line("spur"))
         self.bunion_card = ModelCard("Bunion angles", self.score_line("bunion"))
-        self.fracture_card = ModelCard("Fracture flag · demo", self.score_line("fracture"))
-        for c in (self.arch_card, self.spur_card, self.bunion_card, self.fracture_card):
+        for c in (self.arch_card, self.spur_card, self.bunion_card):
             col.addWidget(c)
         self.xray_box, self.xray_lay = card(spacing=8)
         col.addWidget(self.xray_box)
@@ -217,9 +216,6 @@ class PatientPage(QWidget):
             c.set_heat("heel", upsample(s["heatmap"], x1 - x0, y1 - y0, 256), tuple(s["crop_box"]))
             heats.append("heel")
             heel = s["box"]
-        if res.get("fracture"):
-            c.set_heat("break", engine.fracture_heat(res["fracture"], w, h))
-            heats.append("break")
         for f in engine.bunion_feet(res, ed):
             feet.append(f["points"])
             labels.append(f"{f['side'].upper()}  HVA {f['hva']:.1f}°  IMA {f['ima']:.1f}°")
@@ -298,26 +294,7 @@ class PatientPage(QWidget):
                 rows.append((None, [], "HVA is the big toe angle, IMA the angle between the 1st and 2nd"
                                        " metatarsals. Drag the dots to correct a line."))
                 self.bunion_card.show_rows(rows, note(top))
-        self.show_fracture_card(note)
         self.show_xray_card()
-
-    def show_fracture_card(self, note):
-        """The X-ray on screen if it was checked, else the newest checked one."""
-        done = [x for x in self.xrays if x["results"] and loads(x["results"], {}).get("fracture")]
-        cur = self.current
-        x = cur if cur is not None and any(d["id"] == cur["id"] for d in done) else (done[0] if done else None)
-        if x is None:
-            busy = any(d["id"] in self.busy for d in self.xrays)
-            self.fracture_card.show_empty("Analysing…" if busy else
-                                          "Add a foot or ankle X-ray to check for a fracture."
-                                          if self.engine is None or self.engine.ready("fracture") else
-                                          "The fracture model isn't loaded.")
-            return
-        fr = loads(x["results"], {})["fracture"]
-        t, col = engine.fracture_class(fr)
-        self.fracture_card.show_rows([(f"{fr['p']:.0%}", [(t, col), ("Demo", "grey")],
-                                       "Fracture chance. Few foot fractures were available to train on, so a"
-                                       " clear result does not rule one out. BREAK HEATMAP shows where it looked.")], note(x))
 
     def show_xray_card(self):
         clear_layout(self.xray_lay)

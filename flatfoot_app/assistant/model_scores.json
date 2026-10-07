@@ -31,16 +31,5 @@
   "ima_mae": 1.1185819685125507,
   "line": "Accuracy 85.0% (big toe angle) \u00b7 95.6% (metatarsal angle)"
  },
- "note": "Measured with tools/check_models.py through the app's own engine (assistant/engine.py), Oct 6 2026.",
- "fracture": {
-  "set": "FracAtlas leg X-rays, test split (fracture/prep.py, seed 0), GPU model at 512 px",
-  "n": 449,
-  "auc_all_leg": 0.9235,
-  "fractures_caught_all_leg": 0.8214,
-  "normals_cleared_all_leg": 0.9364,
-  "n_foot_ankle": 177,
-  "auc_foot_ankle": 0.6731,
-  "foot_ankle_fractures_caught": "6/13",
-  "line": "Demo \u00b7 caught 6 of 13 foot and ankle fractures in testing"
- }
+ "note": "Measured with tools/check_models.py through the app's own engine (assistant/engine.py), Oct 6 2026."
 }
