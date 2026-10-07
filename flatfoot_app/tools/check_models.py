@@ -6,6 +6,7 @@ Each check needs its dataset on disk; checks without data are skipped.
 
   python tools/check_models.py --pesplanus "D:/data/Pesplanus Dataset" --pesplanus-split pesplanus_split.csv
                                --heel D:/data/heel-spur --hvangleest D:/data/hvangleest
+                               --fracatlas D:/data/FracAtlas --fracture-split split.csv
                                [--out scores.json]
 
 * Flat foot: Pesplanus X-rays from patients never used for the landmark labels
@@ -15,6 +16,8 @@ Each check needs its dataset on disk; checks without data are skipped.
   hashes and seed), heel finder box -> classifier, as in heel_spur/evaluate.py.
 * Bunion: HVAngleEst official test feet with the dataset's foot boxes, as in
   bunion/ensemble.py; also with the foot finder when footfinder.onnx is installed.
+* Fracture: the fracture/prep.py test split (its split.csv), whole X-ray, flag threshold
+  from fracture.json; scored on the foot and ankle X-rays, as in fracture/evaluate.py.
 """
 import argparse
 import json
@@ -121,6 +124,25 @@ def check_bunion(eng, folder):
     return res
 
 
+def check_fracture(eng, folder, split_csv):
+    from PIL import ImageFile
+    from sklearn.metrics import roc_auc_score
+    ImageFile.LOAD_TRUNCATED_IMAGES = True  # a few FracAtlas JPGs are cut short, as in fracture/common.py
+    df = pd.read_csv(split_csv)
+    df = df[(df.split == "test") & df.region.isin(["foot", "ankle", "foot_ankle_view"])].reset_index(drop=True)
+    p = []
+    for _, r in df.iterrows():
+        out = {}
+        eng.check_fracture(engine.open_xray(os.path.join(folder, "images", "Fractured" if r.fractured else "Non_fractured",
+                                                         r.image_id)), out)
+        p.append(out["fracture"]["p"])
+    p, y = np.array(p), df.fractured.to_numpy(bool)
+    flag = p >= eng.fracture.threshold
+    return {"set": "FracAtlas foot and ankle X-rays, fracture/prep.py test split", "n": len(df),
+            "auc": float(roc_auc_score(y, p)), "fractures_caught": float(flag[y].mean()), "n_fractured": int(y.sum()),
+            "normal_cleared": float((~flag[~y]).mean()), "n_normal": int((~y).sum())}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pesplanus")
@@ -128,6 +150,8 @@ def main():
     ap.add_argument("--heel")
     ap.add_argument("--hvangleest")
     ap.add_argument("--bunion-models")
+    ap.add_argument("--fracatlas")
+    ap.add_argument("--fracture-split")
     ap.add_argument("--out")
     a = ap.parse_args()
     eng = engine.Engine(a.bunion_models)
@@ -142,6 +166,9 @@ def main():
     if a.hvangleest and eng.bunion:
         res["bunion"] = check_bunion(eng, a.hvangleest)
         print("bunion", json.dumps(res["bunion"]), flush=True)
+    if a.fracatlas and a.fracture_split and eng.fracture:
+        res["fracture"] = check_fracture(eng, a.fracatlas, a.fracture_split)
+        print("fracture", json.dumps(res["fracture"]), flush=True)
     if a.out:
         json.dump(res, open(a.out, "w"), indent=1)
 

@@ -57,7 +57,8 @@ class Hero(QFrame):
         self.pic.setAlignment(Qt.AlignCenter)
         self.src = QPixmap(resource("assistant", "assets", "lightbox.png"))
         lay.addWidget(self.pic, 1)
-        for t in ("Flat foot · heel bone angle", "Heel spur · zoomed heel check", "Bunion · HVA and IMA per foot"):
+        for t in ("Flat foot · heel bone angle", "Heel spur · zoomed heel check", "Bunion · HVA and IMA per foot",
+                  "Fracture · flag and where to look"):
             lab = QLabel("▸  " + t)
             lay.addWidget(lab)
 

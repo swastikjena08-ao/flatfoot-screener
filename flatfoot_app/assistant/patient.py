@@ -105,7 +105,8 @@ class PatientPage(QWidget):
         self.arch_card = ModelCard("Arch · flat foot", self.score_line("flat"))
         self.spur_card = ModelCard("Heel spur", self.score_line("spur"))
         self.bunion_card = ModelCard("Bunion angles", self.score_line("bunion"))
-        for c in (self.arch_card, self.spur_card, self.bunion_card):
+        self.fracture_card = ModelCard("Fracture flag", self.score_line("fracture"))
+        for c in (self.arch_card, self.spur_card, self.bunion_card, self.fracture_card):
             col.addWidget(c)
         self.xray_box, self.xray_lay = card(spacing=8)
         col.addWidget(self.xray_box)
@@ -210,6 +211,11 @@ class PatientPage(QWidget):
             c.set_heat("heel", upsample(s["heatmap"], x1 - x0, y1 - y0, 256), tuple(s["crop_box"]))
             heats.append("heel")
             heel = s["box"]
+        if res.get("fracture"):
+            fr = res["fracture"]
+            x0, y0, x1, y1 = fr["map_box"]
+            c.set_heat("break", upsample(fr["heatmap"], x1 - x0, y1 - y0), tuple(fr["map_box"]))
+            heats.append("break")
         for f in engine.bunion_feet(res, ed):
             feet.append(f["points"])
             labels.append(f"{f['side'].upper()}  HVA {f['hva']:.1f}°  IMA {f['ima']:.1f}°")
@@ -287,7 +293,28 @@ class PatientPage(QWidget):
                 rows.append((None, [], "HVA is the big toe angle, IMA the angle between the 1st and 2nd"
                                        " metatarsals. Drag the dots to correct a line."))
                 self.bunion_card.show_rows(rows, note(top))
+        self.show_fracture_card()
         self.show_xray_card()
+
+    def show_fracture_card(self):
+        """Fracture flag of this X-ray (either view), else of the newest checked one."""
+        x = self.current if self.current is not None and self.current["results"] else \
+            next((x for x in self.xrays if x["results"]), None)
+        if x is None:
+            busy = self.current is not None and self.current["id"] in self.busy
+            self.fracture_card.show_empty("Analysing…" if busy else "Add a foot or ankle X-ray (either view) to check for a fracture.")
+            return
+        fr = loads(x["results"], {}).get("fracture")
+        if fr is None:
+            self.fracture_card.show_empty("The fracture model isn't loaded, or this X-ray was checked before it was added."
+                                          " Use Check again.")
+            return
+        t, col = engine.fracture_class(fr)
+        src = "" if x is self.current else f"From the {VIEW_NAMES[x['view']].lower()} X-ray of {when(x['added_at'])}"
+        self.fracture_card.show_rows([(f"{fr['p']:.0%}", [(t, col)],
+                                       f"Fracture likelihood {fr['p']:.0%} (flagged from {fr['threshold']:.0%})."
+                                       " The fracture heatmap shows where the model looked. It misses about half of"
+                                       " foot and ankle fractures, so no flag is not an all-clear.")], src)
 
     def show_xray_card(self):
         clear_layout(self.xray_lay)
