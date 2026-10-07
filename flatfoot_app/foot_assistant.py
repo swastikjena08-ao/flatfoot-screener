@@ -3,7 +3,6 @@
   python foot_assistant.py [--data-dir FOLDER]
 
 Patients, X-ray copies and results are kept in FOLDER (default: %APPDATA%\\Foot X-ray Assistant).
-The single-X-ray screener is still flatfoot_app.py.
 """
 import argparse
 import sys

@@ -729,7 +729,8 @@ class MainWindow(QMainWindow):
         super().closeEvent(e)
 
 
-def main():
+def screener_main():
+    """The old single-X-ray flat foot screener. Kept for reference; not started any more."""
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     win = MainWindow()
@@ -740,4 +741,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Running this file (or pressing Run on it in VS Code) starts the Foot X-ray Assistant.
+    # This module stays because the assistant uses its models, preprocessing and angle maths.
+    import foot_assistant
+    foot_assistant.main()

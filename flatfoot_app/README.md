@@ -73,7 +73,7 @@ cd flatfoot_app
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-python flatfoot_app.py                 # or: python flatfoot_app.py path\to\xray.jpg
+python foot_assistant.py              # the Foot X-ray Assistant (python flatfoot_app.py opens it too)
 ```
 
 `model.onnx`, `landmarks.onnx` and `landmarks.json` must be in the same folder as `flatfoot_app.py`.

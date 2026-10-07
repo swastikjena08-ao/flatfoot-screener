@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Foot X-ray Assistant",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/flatfoot_app/foot_assistant.py",
+      "cwd": "${workspaceFolder}/flatfoot_app",
+      "console": "integratedTerminal"
+    }
+  ]
+}
