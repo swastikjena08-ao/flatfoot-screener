@@ -1,0 +1,282 @@
+[
+ {
+  "epoch": 1,
+  "auc": 0.8501,
+  "foot_ankle_auc": 0.8213,
+  "loss": 0.698,
+  "minutes": 1.23
+ },
+ {
+  "epoch": 2,
+  "auc": 0.8831,
+  "foot_ankle_auc": 0.9438,
+  "loss": 0.5764,
+  "minutes": 1.04
+ },
+ {
+  "epoch": 3,
+  "auc": 0.8272,
+  "foot_ankle_auc": 0.8357,
+  "loss": 0.5977,
+  "minutes": 1.04
+ },
+ {
+  "epoch": 4,
+  "auc": 0.8302,
+  "foot_ankle_auc": 0.7717,
+  "loss": 0.5218,
+  "minutes": 1.06
+ },
+ {
+  "epoch": 5,
+  "auc": 0.8935,
+  "foot_ankle_auc": 0.9614,
+  "loss": 0.4944,
+  "minutes": 1.09
+ },
+ {
+  "epoch": 6,
+  "auc": 0.8782,
+  "foot_ankle_auc": 0.849,
+  "loss": 0.4476,
+  "minutes": 1.1
+ },
+ {
+  "epoch": 7,
+  "auc": 0.8972,
+  "foot_ankle_auc": 0.9354,
+  "loss": 0.4593,
+  "minutes": 1.1
+ },
+ {
+  "epoch": 8,
+  "auc": 0.9074,
+  "foot_ankle_auc": 0.9293,
+  "loss": 0.4074,
+  "minutes": 1.11
+ },
+ {
+  "epoch": 9,
+  "auc": 0.8829,
+  "foot_ankle_auc": 0.9457,
+  "loss": 0.3693,
+  "minutes": 1.11
+ },
+ {
+  "epoch": 10,
+  "auc": 0.9373,
+  "foot_ankle_auc": 0.8943,
+  "loss": 0.4214,
+  "minutes": 1.18
+ },
+ {
+  "epoch": 11,
+  "auc": 0.9013,
+  "foot_ankle_auc": 0.9209,
+  "loss": 0.3698,
+  "minutes": 1.24
+ },
+ {
+  "epoch": 12,
+  "auc": 0.9045,
+  "foot_ankle_auc": 0.8533,
+  "loss": 0.3162,
+  "minutes": 1.38
+ },
+ {
+  "epoch": 13,
+  "auc": 0.9407,
+  "foot_ankle_auc": 0.8955,
+  "loss": 0.3488,
+  "minutes": 1.32
+ },
+ {
+  "epoch": 14,
+  "auc": 0.95,
+  "foot_ankle_auc": 0.93,
+  "loss": 0.3147,
+  "minutes": 1.44
+ },
+ {
+  "epoch": 15,
+  "auc": 0.9366,
+  "foot_ankle_auc": 0.8605,
+  "loss": 0.3217,
+  "minutes": 1.69
+ },
+ {
+  "epoch": 16,
+  "auc": 0.8799,
+  "foot_ankle_auc": 0.8998,
+  "loss": 0.2927,
+  "minutes": 1.69
+ },
+ {
+  "epoch": 17,
+  "auc": 0.9431,
+  "foot_ankle_auc": 0.9161,
+  "loss": 0.3022,
+  "minutes": 1.5
+ },
+ {
+  "epoch": 18,
+  "auc": 0.8948,
+  "foot_ankle_auc": 0.8895,
+  "loss": 0.3007,
+  "minutes": 1.61
+ },
+ {
+  "epoch": 19,
+  "auc": 0.9401,
+  "foot_ankle_auc": 0.9215,
+  "loss": 0.2609,
+  "minutes": 1.37
+ },
+ {
+  "epoch": 20,
+  "auc": 0.9621,
+  "foot_ankle_auc": 0.9336,
+  "loss": 0.2537,
+  "minutes": 1.3
+ },
+ {
+  "epoch": 21,
+  "auc": 0.949,
+  "foot_ankle_auc": 0.9547,
+  "loss": 0.2702,
+  "minutes": 1.15
+ },
+ {
+  "epoch": 22,
+  "auc": 0.9505,
+  "foot_ankle_auc": 0.9414,
+  "loss": 0.2365,
+  "minutes": 1.16
+ },
+ {
+  "epoch": 23,
+  "auc": 0.9553,
+  "foot_ankle_auc": 0.9553,
+  "loss": 0.2144,
+  "minutes": 1.16
+ },
+ {
+  "epoch": 24,
+  "auc": 0.9657,
+  "foot_ankle_auc": 0.9595,
+  "loss": 0.2186,
+  "minutes": 1.17
+ },
+ {
+  "epoch": 25,
+  "auc": 0.9378,
+  "foot_ankle_auc": 0.965,
+  "loss": 0.2188,
+  "minutes": 1.21
+ },
+ {
+  "epoch": 26,
+  "auc": 0.965,
+  "foot_ankle_auc": 0.9614,
+  "loss": 0.1979,
+  "minutes": 1.26
+ },
+ {
+  "epoch": 27,
+  "auc": 0.9625,
+  "foot_ankle_auc": 0.9541,
+  "loss": 0.1859,
+  "minutes": 1.27
+ },
+ {
+  "epoch": 28,
+  "auc": 0.9627,
+  "foot_ankle_auc": 0.9771,
+  "loss": 0.2002,
+  "minutes": 1.17
+ },
+ {
+  "epoch": 29,
+  "auc": 0.955,
+  "foot_ankle_auc": 0.9704,
+  "loss": 0.1808,
+  "minutes": 1.18
+ },
+ {
+  "epoch": 30,
+  "auc": 0.949,
+  "foot_ankle_auc": 0.9698,
+  "loss": 0.1963,
+  "minutes": 1.17
+ },
+ {
+  "epoch": 31,
+  "auc": 0.9657,
+  "foot_ankle_auc": 0.9734,
+  "loss": 0.1543,
+  "minutes": 1.28
+ },
+ {
+  "epoch": 32,
+  "auc": 0.9608,
+  "foot_ankle_auc": 0.9879,
+  "loss": 0.1556,
+  "minutes": 1.34
+ },
+ {
+  "epoch": 33,
+  "auc": 0.9667,
+  "foot_ankle_auc": 0.9861,
+  "loss": 0.1509,
+  "minutes": 1.4
+ },
+ {
+  "epoch": 34,
+  "auc": 0.9672,
+  "foot_ankle_auc": 0.9915,
+  "loss": 0.1409,
+  "minutes": 1.32
+ },
+ {
+  "epoch": 35,
+  "auc": 0.9673,
+  "foot_ankle_auc": 0.9891,
+  "loss": 0.1348,
+  "minutes": 1.19
+ },
+ {
+  "epoch": 36,
+  "auc": 0.966,
+  "foot_ankle_auc": 0.9921,
+  "loss": 0.1391,
+  "minutes": 1.16
+ },
+ {
+  "epoch": 37,
+  "auc": 0.9654,
+  "foot_ankle_auc": 0.994,
+  "loss": 0.1271,
+  "minutes": 1.17
+ },
+ {
+  "epoch": 38,
+  "auc": 0.9652,
+  "foot_ankle_auc": 0.9921,
+  "loss": 0.1319,
+  "minutes": 1.18
+ },
+ {
+  "epoch": 39,
+  "auc": 0.9683,
+  "foot_ankle_auc": 0.9928,
+  "loss": 0.1294,
+  "minutes": 1.17
+ },
+ {
+  "epoch": 40,
+  "auc": 0.9683,
+  "foot_ankle_auc": 0.9915,
+  "loss": 0.1237,
+  "minutes": 1.17
+ }
+]

@@ -1,0 +1,26 @@
+{
+ "threshold": 0.041977930814027786,
+ "test_all_leg": {
+  "n": 470,
+  "fractured": 50,
+  "auc": 0.8584285714285714,
+  "sensitivity": 0.8,
+  "specificity": 0.6619047619047619,
+  "flagged": 182,
+  "points_at_break": 0.48
+ },
+ "test_foot_ankle": {
+  "n": 192,
+  "fractured": 16,
+  "auc": 0.5475852272727273,
+  "sensitivity": 0.5,
+  "specificity": 0.5852272727272727,
+  "flagged": 81,
+  "points_at_break": 0.1875
+ },
+ "found_foot_fractures": "5/12",
+ "found_ankle_fractures": "3/4",
+ "found_distal_leg_fractures": "7/7",
+ "found_other_leg_fractures": "25/27",
+ "val_auc": 0.9164149803684687
+}
