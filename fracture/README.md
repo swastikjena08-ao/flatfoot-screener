@@ -42,3 +42,12 @@ CPU run (`results/cpu_384/`): 384 px, 20 rounds, best round 14 by validation sco
 | foot and ankle | 192 | 16 | 0.55 | 50% | 59% | 19% |
 
 Found: shin and thigh 25/27, lower shin 7/7, ankle 3/4, **foot 5/12**. The model learned long-bone breaks but not foot breaks: only 11 foot fractures landed in the training split (12 in test), and small toe and metatarsal breaks shrink to a few pixels at 384 px. Not usable for feet yet.
+
+GPU run (`results/gpu_512/`, GTX 1650): 512 px, 40 rounds (about 1.2 min each), best round 39 by validation score (0.97). Uses the re-split that puts 18 foot fractures in training, so its test split differs from the CPU run's. `log.json` holds per-round scores rounded to 4 decimals.
+
+| test split | X-rays | fractured | AUC | fractures flagged | normals cleared | points at break |
+|---|---|---|---|---|---|---|
+| all leg | 449 | 56 | 0.92 | 82% | 94% | 64% |
+| foot and ankle | 177 | 13 | 0.67 | 46% | 90% | 46% |
+
+Found: shin and thigh 36/38, lower shin 4/5, ankle 4/8, **foot 2/5**. Long-bone breaks are now reliable. Foot and ankle stay weak: validation scored them at 0.99, test at 0.67, and with only 12-13 such fractures in each split neither number is solid. Treat the foot and ankle flag as a demo, not a measured result.
