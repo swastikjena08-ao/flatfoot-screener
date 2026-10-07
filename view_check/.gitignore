@@ -1,0 +1,8 @@
+# Trained partly on HVAngleEst (CC BY-NC-ND 4.0) and UNIFESP (CC BY-NC-SA 4.0) images:
+# keep caches, weights and the exported model out of the repo
+*.npz
+*.pt
+*.pth
+*.onnx
+*.png
+work/

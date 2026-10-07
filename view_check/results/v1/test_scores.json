@@ -1,0 +1,107 @@
+{
+ "test": {
+  "accuracy": 0.9902186421173763,
+  "balanced_accuracy": 0.9641931383699409,
+  "recall": {
+   "side": 0.9928366762177651,
+   "top_down": 0.992831541218638,
+   "oblique": 0.8780487804878049,
+   "not_foot": 0.9930555555555556
+  }
+ },
+ "test_n": 1738,
+ "test_fracatlas_only": {
+  "accuracy": 0.9827882960413081,
+  "n": 581,
+  "recall": {
+   "side": 0.9142857142857143,
+   "top_down": 1.0,
+   "oblique": 0.9230769230769231,
+   "not_foot": 0.9914163090128756
+  }
+ },
+ "test_unifesp_only": {
+  "accuracy": 0.9770992366412213,
+  "n": 262,
+  "recall": {
+   "side": 0.5,
+   "top_down": 0.5,
+   "oblique": 0.0,
+   "not_foot": 0.9960629921259843
+  }
+ },
+ "outside_test": {
+  "accuracy": 0.974025974025974,
+  "balanced_accuracy": 0.6093073593073594,
+  "recall": {
+   "side": 0.6190476190476191,
+   "top_down": 0.8181818181818182,
+   "oblique": 0.0,
+   "not_foot": 1.0
+  }
+ },
+ "outside_test_n": 693,
+ "outside_confusion": {
+  "not_foot": {
+   "not_foot": 653,
+   "oblique": 2,
+   "side": 8,
+   "top_down": 2
+  },
+  "side": {
+   "not_foot": 0,
+   "oblique": 0,
+   "side": 13,
+   "top_down": 0
+  },
+  "top_down": {
+   "not_foot": 0,
+   "oblique": 6,
+   "side": 0,
+   "top_down": 9
+  }
+ },
+ "confusion": {
+  "not_foot": {
+   "not_foot": 715,
+   "oblique": 2,
+   "side": 3,
+   "top_down": 2
+  },
+  "oblique": {
+   "not_foot": 0,
+   "oblique": 36,
+   "side": 2,
+   "top_down": 0
+  },
+  "side": {
+   "not_foot": 4,
+   "oblique": 0,
+   "side": 693,
+   "top_down": 0
+  },
+  "top_down": {
+   "not_foot": 1,
+   "oblique": 3,
+   "side": 0,
+   "top_down": 277
+  }
+ },
+ "extras": {
+  "not_foot": {
+   "ankle_front": 15,
+   "end_on": 14,
+   "foot_unsorted": 35
+  },
+  "side": {
+   "ankle_front": 0,
+   "end_on": 0,
+   "foot_unsorted": 8
+  },
+  "top_down": {
+   "ankle_front": 3,
+   "end_on": 12,
+   "foot_unsorted": 2
+  }
+ }
+}
