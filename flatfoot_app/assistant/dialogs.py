@@ -295,7 +295,8 @@ class SettingsDialog(Dialog):
 
         box, lay = card()
         lay.addWidget(label("Models", h2=True))
-        names = {"flat": "Flat foot (heel bone angle)", "spur": "Heel spur", "bunion": "Bunion angles"}
+        names = {"flat": "Flat foot (heel bone angle)", "spur": "Heel spur", "bunion": "Bunion angles",
+                 "fracture": "Fracture flag"}
         for k, title in names.items():
             st = eng.status.get(k, "loading") if eng else "loading"
             colour = "green" if st.startswith("ready") else "amber"

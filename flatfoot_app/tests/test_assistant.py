@@ -157,6 +157,26 @@ def test_top_view_pipeline(eng):
     json.dumps(r)
 
 
+def test_fracture_on_both_views(eng):
+    if not eng.ready("fracture"):
+        pytest.skip("fracture.onnx not found")
+    img = Image.fromarray((np.random.default_rng(0).random((300, 400)) * 255).astype(np.uint8))
+    for view in ("side", "top"):
+        fr = eng.analyse(img, view)["fracture"]
+        assert 0 <= fr["p"] <= 1 and fr["flag"] == (fr["p"] >= fr["threshold"])
+        assert np.asarray(fr["heatmap"]).shape == (16, 16)
+        x0, y0, x1, y1 = fr["map_box"]
+        assert x0 <= 0 and y0 <= 0 and x1 >= 400 and y1 >= 300 and abs((x1 - x0) - (y1 - y0)) < 1e-6
+
+
+def test_fracture_never_reads_as_all_clear():
+    assert engine.fracture_class({"p": 0.6, "flag": True}) == ("Possible fracture", "red")
+    assert engine.fracture_class({"p": 0.05, "flag": False}) == ("No fracture flagged", "grey")
+    res = {"fracture": {"p": 0.6, "flag": True, "threshold": 0.15}}
+    assert ("Possible fracture", "red") in engine.findings(res, {})
+    assert engine.findings({"fracture": {"p": 0.05, "flag": False, "threshold": 0.15}}, {}) == []
+
+
 # ---------- screens ----------
 
 @pytest.fixture
@@ -212,7 +232,9 @@ def test_patient_page_and_report(window, tmp_path):
            "flat": {"p": 0.9, "cam": np.full((7, 7), 0.5).tolist(), "left": False, "how": "detected automatically",
                     "points": {"L10": [100.0, 200.0], "L11": [200.0, 220.0]}},
            "spur": {"probs": {"normal": 0.1, "spur": 0.85, "sever": 0.05}, "label": "spur", "box": [250, 150, 380, 290],
-                    "crop_box": [240, 140, 390, 290], "heatmap": np.full((7, 7), 0.3).tolist()}}
+                    "crop_box": [240, 140, 390, 290], "heatmap": np.full((7, 7), 0.3).tolist()},
+           "fracture": {"p": 0.62, "flag": True, "threshold": 0.15, "heatmap": np.full((16, 16), 0.2).tolist(),
+                        "map_box": [0.0, -50.0, 400.0, 350.0]}}
     w.store.save_results(x["id"], res, "right")
     w.open_patient(p["id"])
     assert w.stack.currentWidget() is w.patient
@@ -221,6 +243,8 @@ def test_patient_page_and_report(window, tmp_path):
     assert ed["arch"]["L11"] == [200.0, 180.0]
     text = report.draft(w.patient.patient, w.store.xrays(p["id"]), u)
     assert "calcaneal pitch -11.3°" in text and "points adjusted by hand" in text and "Heel spur likely" in text
+    assert "Fracture: Possible fracture. Model score 62%" in text and "possible fracture on the side view" in text
+    assert w.patient.drawer.heat_buttons["break"].isVisibleTo(w.patient.drawer)
     w.patient.reset_points()
     assert json.loads(w.store.xray(x["id"])["edits"]) == {}
     w.go_home()

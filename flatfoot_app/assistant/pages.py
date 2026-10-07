@@ -56,7 +56,8 @@ class Hero(QFrame):
         grid.setMinimumSize(200, 200)
         grid.empty_text = "Sign in to open your patients' X-rays"
         lay.addWidget(grid, 1)
-        for t in ("Flat foot · heel bone angle", "Heel spur · zoomed heel check", "Bunion · big toe and metatarsal angles"):
+        for t in ("Flat foot · heel bone angle", "Heel spur · zoomed heel check", "Bunion · big toe and metatarsal angles",
+                  "Fracture · flag and where to look"):
             lay.addWidget(QLabel("▸  " + t))
 
 
