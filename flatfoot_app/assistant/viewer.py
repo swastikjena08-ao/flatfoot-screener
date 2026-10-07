@@ -587,7 +587,8 @@ class Drawer(QFrame):
         bar.addWidget(title)
         bar.addSpacing(10)
         self.heat_buttons = {}
-        for key, text in (("off", "NO HEATMAP"), ("arch", "ARCH HEATMAP"), ("heel", "HEEL HEATMAP")):
+        for key, text in (("off", "NO HEATMAP"), ("arch", "ARCH HEATMAP"), ("heel", "HEEL HEATMAP"),
+                          ("break", "BREAK HEATMAP")):
             b = QPushButton(text)
             b.setCursor(Qt.PointingHandCursor)
             b.clicked.connect(lambda _=False, k=key: self.set_heat(k))

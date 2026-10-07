@@ -129,6 +129,7 @@ Make keys with `python tools/make_keys.py 10 --out keys.txt`. Only the keys' SHA
 | Side | `model.onnx` + `landmarks.onnx` | Calcaneal pitch (drag L10/L11 to correct), flat foot under 17.7°, high arch flag over 30°, heatmap |
 | Side | `heel_finder.onnx` + `heel_spur.onnx` | Spur / normal / child's heel (Sever's) with the heel box and heatmap |
 | Top-down | `models/bunion/*.onnx` | HVA and IMA per foot (drag the 6 points to correct) |
+| Both | `fracture.onnx` + `fracture.json` | Fracture flag, **demo only**: fracture chance and a break heatmap. Caught 6 of 13 foot and ankle fractures in testing, so a clear result never rules one out (see `../fracture/README.md`) |
 
 Test scores of the app's own pipeline are in `assistant/model_scores.json` and shown in the app; `tools/check_models.py` recomputes them from the datasets.
 
@@ -139,9 +140,10 @@ Test scores of the app's own pipeline are in `assistant/model_scores.json` and s
 ```
 pip install pyinstaller
 pyinstaller --noconfirm --onedir --windowed --name "Foot X-ray Assistant" ^
-  --paths .. --hidden-import heel_spur.predict --hidden-import bunion.predict ^
+  --paths .. --hidden-import heel_spur.predict --hidden-import bunion.predict --hidden-import fracture.predict ^
   --add-data "model.onnx;." --add-data "landmarks.onnx;." --add-data "landmarks.json;." ^
   --add-data "heel_finder.onnx;." --add-data "heel_spur.onnx;." --add-data "heel_spur.json;." ^
+  --add-data "fracture.onnx;." --add-data "fracture.json;." ^
   --add-data "models/bunion;models/bunion" ^
   --add-data "assistant/activation_keys.json;assistant" --add-data "assistant/model_scores.json;assistant" ^
   foot_assistant.py

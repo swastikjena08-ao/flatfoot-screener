@@ -60,6 +60,7 @@ def draft(patient, xrays, author, threshold=17.7):
                          f" child's heel (Sever's) {pr['sever']:.0%}.")
             if t != "No heel spur":
                 impression.append(t.lower())
+        _fracture(res, lines, impression)
         lines += _remarks(side) + [""]
     top = picked.get("top")
     if top:
@@ -75,8 +76,19 @@ def draft(patient, xrays, author, threshold=17.7):
                          f"intermetatarsal angle {f['ima']:.1f}°{moved}. {t}.")
             if t != "No bunion":
                 impression.append(f"{t.lower()} on the {f['side']} (HVA {f['hva']:.0f}°, IMA {f['ima']:.0f}°)")
+        _fracture(res, lines, impression)
         lines += _remarks(top) + [""]
     lines.append("IMPRESSION")
     lines.append(("Findings: " + "; ".join(impression) + ".") if impression else "No flagged findings on the measured views.")
     lines += ["", "Measurements are drafted by software and must be checked and signed by the treating doctor."]
     return "\n".join(lines)
+
+
+def _fracture(res, lines, impression):
+    fr = res.get("fracture")
+    if not fr:
+        return
+    t, _ = engine.fracture_class(fr)
+    lines.append(f"Fracture flag (demo model, not validated on feet): {t.lower()}, model score {fr['p']:.0%}.")
+    if fr["flag"]:
+        impression.append("possible fracture flagged, please review")
