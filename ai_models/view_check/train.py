@@ -4,7 +4,7 @@ Each epoch draws the same number of X-rays from every class, so the 217 angled v
 are not drowned out by the thousands of side views.
 
 Usage:
-  python train.py --cache work/cache.npz --init ../flatfoot_app/model.onnx --out work/view
+  python train.py --cache work/cache.npz --init ../../flatfoot_app/model.onnx --out work/view
 """
 import argparse
 import json
