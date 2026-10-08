@@ -14,7 +14,7 @@ The model folder holds:
     footfinder.onnx      finds the left/right foot boxes (optional; without it pass `boxes`)
     bunion.json          {"zoom_weight": 0.8} and the test scores to show in the app
 
-CLI: python predict.py --models ../flatfoot_app/models/bunion xray.jpg
+CLI: python predict.py --models ../../flatfoot_app/models/bunion xray.jpg
 """
 import argparse
 import json

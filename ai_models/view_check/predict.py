@@ -9,7 +9,7 @@ Needs only numpy, Pillow and onnxruntime (no PyTorch), like flatfoot_app.py.
     r["probs"]   # {"side": 0.97, "top_down": 0.01, "oblique": 0.01, "not_foot": 0.01}
     r["tools"]   # ["flat_foot", "heel_spur"] for a side view, ["bunion"] for top-down, [] otherwise
 
-CLI: python predict.py --models ../flatfoot_app xray.jpg [more.jpg ...]
+CLI: python predict.py --models ../../flatfoot_app xray.jpg [more.jpg ...]
 """
 import argparse
 import json

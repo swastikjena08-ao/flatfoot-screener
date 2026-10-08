@@ -1,8 +1,8 @@
 """Train the heel finder (--task locate) or the spur classifier (--task classify) on CPU or GPU.
 
 Usage:
-  python train.py --task locate   --cache work/cache.npz --init ../flatfoot_app/model.onnx --out work/locate
-  python train.py --task classify --cache work/cache.npz --init ../flatfoot_app/model.onnx --out work/classify
+  python train.py --task locate   --cache work/cache.npz --init ../../flatfoot_app/model.onnx --out work/locate
+  python train.py --task classify --cache work/cache.npz --init ../../flatfoot_app/model.onnx --out work/classify
 """
 import argparse
 import json

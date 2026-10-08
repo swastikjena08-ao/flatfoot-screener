@@ -2,8 +2,8 @@
 and easy to test.
 
 * Side view: flat foot (flatfoot_app.py: classifier + L10/L11 heel bone angle) and
-  heel spur (heel_spur/predict.py).
-* Top-down view: bunion angles (bunion/predict.py), one result per foot.
+  heel spur (ai_models/heel_spur/predict.py).
+* Top-down view: bunion angles (ai_models/bunion/predict.py), one result per foot.
 
 Each model's own predict code is imported and called unchanged, so the app gives the
 same answers as the model's training repo (tools/check_models.py checks this).
@@ -17,8 +17,9 @@ from PIL import Image, ImageOps
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.dirname(HERE)            # flatfoot_app/
-REPO = os.path.dirname(APP_DIR)            # repo root, holds heel_spur/ and bunion/
-for p in (APP_DIR, REPO):
+REPO = os.path.dirname(APP_DIR)            # repo root
+MODELS_DIR = os.path.join(REPO, "ai_models")  # holds heel_spur/ and bunion/
+for p in (APP_DIR, MODELS_DIR):
     if p not in sys.path:
         sys.path.insert(0, p)
 

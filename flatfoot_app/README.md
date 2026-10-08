@@ -139,7 +139,7 @@ Test scores of the app's own pipeline are in `assistant/model_scores.json` and s
 ```
 pip install pyinstaller
 pyinstaller --noconfirm --onedir --windowed --name "Foot X-ray Assistant" ^
-  --paths .. --hidden-import heel_spur.predict --hidden-import bunion.predict ^
+  --paths ../ai_models --hidden-import heel_spur.predict --hidden-import bunion.predict ^
   --add-data "model.onnx;." --add-data "landmarks.onnx;." --add-data "landmarks.json;." ^
   --add-data "heel_finder.onnx;." --add-data "heel_spur.onnx;." --add-data "heel_spur.json;." ^
   --add-data "models/bunion;models/bunion" ^

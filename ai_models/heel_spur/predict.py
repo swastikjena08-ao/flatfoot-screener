@@ -11,7 +11,7 @@ Needs only numpy, Pillow and onnxruntime (no PyTorch), like flatfoot_app.py.
     r["heatmap"]  # 7x7 map over the heel crop for the predicted class, 0..1
     r["crop_box"] # square (x0, y0, x1, y1) in image pixels the heatmap covers
 
-CLI: python predict.py --models ../flatfoot_app xray.jpg
+CLI: python predict.py --models ../../flatfoot_app xray.jpg
 """
 import argparse
 import json
