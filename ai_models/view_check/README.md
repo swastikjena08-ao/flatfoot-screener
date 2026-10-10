@@ -11,7 +11,7 @@ Looks at an uploaded X-ray and says what it is, so the app can send it to the ri
 
 Below `min_confidence` (0.6 by default) the answer is **unsure** and the app should ask the user.
 
-One ResNet-18 started from the flat foot classifier in `../../flatfoot_app/model.onnx`, reading the whole X-ray letterboxed to 224x224.
+One ResNet-18 started from the flat foot classifier in `../flat_foot/model.onnx`, reading the whole X-ray letterboxed to 224x224.
 
 ## Data
 
@@ -37,20 +37,20 @@ Because nearly every top-down training image comes from one bunion dataset, the 
 ```
 pip install -r ../heel_spur/requirements.txt
 python prep.py --labels D:/datasets/xray-check/labels.csv --root D:/datasets --out work/cache.npz
-python train.py --cache work/cache.npz --init ../../flatfoot_app/model.onnx --out work/view
+python train.py --cache work/cache.npz --init ../flat_foot/model.onnx --out work/view
 python evaluate.py --cache work/cache.npz --model work/view/best.pt --out work/eval
-python export.py --model work/view/best.pt --out ../../flatfoot_app
+python export.py --model work/view/best.pt --out .
 ```
 
 `train.py` draws the same number of X-rays from every class each round (`--per-class`, default 1,200), so the small angled class is not drowned out. It uses the GPU when there is one (`--device cpu` to force CPU); on a 4-core cloud CPU a round takes about 4 minutes.
 
-## Use in the app
+## Use from Python
 
 `predict.py` needs only numpy, Pillow and onnxruntime:
 
 ```python
 from view_check.predict import ViewCheck
-vc = ViewCheck("flatfoot_app")          # view_check.onnx, view_check.json
+vc = ViewCheck(".")                   # view_check.onnx, view_check.json
 r = vc.predict(Image.open("xray.jpg"))
 r["view"], r["probs"], r["tools"]       # "side", {...}, ["flat_foot", "heel_spur"]
 ```

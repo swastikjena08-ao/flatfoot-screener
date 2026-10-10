@@ -33,8 +33,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
     ap.add_argument("--split", required=True)
-    ap.add_argument("--models", default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                     "..", "..", "flatfoot_app"))
+    ap.add_argument("--models", default=os.path.dirname(os.path.abspath(__file__)))
     ap.add_argument("--group", default="never_labeled_patient")
     ap.add_argument("--out", default=None, help="optional JSON file for the scores")
     args = ap.parse_args()

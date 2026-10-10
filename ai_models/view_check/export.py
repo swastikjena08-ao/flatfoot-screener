@@ -4,7 +4,7 @@
   view_check.json:  class names, input size and the confidence cut-off used by predict.py
 
 Usage:
-  python export.py --model work/view/best.pt --out ../../flatfoot_app
+  python export.py --model work/view/best.pt --out .
 """
 import argparse
 import json

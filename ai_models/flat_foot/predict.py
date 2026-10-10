@@ -1,7 +1,7 @@
 """Flat foot models: classifier + heel bone angle (L10/L11 landmarks). No UI.
 
-Model code copied from flatfoot_app/flatfoot_app.py (minus the window), so it gives the
-same answers as the app. Two ONNX models, both in flatfoot_app/:
+Model code copied from the old app (minus the window), so it gives the
+same answers as the old app. Two ONNX models, both in this folder:
   * model.onnx      ResNet-18 classifier: flat foot probability + 7x7 heatmap.
   * landmarks.onnx  ResNet-18 heatmap model that finds L10 and L11; the L10->L11 angle
                     against the horizontal is the heel bone angle (flat if under 17.7 deg).
@@ -9,7 +9,7 @@ same answers as the app. Two ONNX models, both in flatfoot_app/:
 Both were trained (Google Colab) on right-foot side X-rays only, toes pointing left.
 Left feet are mirrored before inference and the points mapped back.
 
-CLI: python predict.py --models ../../flatfoot_app xray.jpg [more.jpg ...]
+CLI: python predict.py xray.jpg [more.jpg ...]
 """
 import argparse
 import json
@@ -216,8 +216,7 @@ class FlatFoot:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--models", default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                     "..", "..", "flatfoot_app"))
+    ap.add_argument("--models", default=os.path.dirname(os.path.abspath(__file__)))
     ap.add_argument("images", nargs="+")
     args = ap.parse_args()
     ff = FlatFoot(args.models)

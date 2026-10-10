@@ -4,7 +4,7 @@
   heel_spur.onnx:   image 1x3x224x224 (heel crop) -> probs 1x3 (normal, spur, sever), cam 1x3x7x7
 
 Usage:
-  python export.py --locate work/locate/best.pt --classify work/classify/best.pt --out ../../flatfoot_app
+  python export.py --locate work/locate/best.pt --classify work/classify/best.pt --out .
 """
 import argparse
 import json

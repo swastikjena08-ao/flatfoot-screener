@@ -1,6 +1,6 @@
 # AI models
 
-All the AI model code for the Foot X-ray Assistant, one folder per model: training, testing and prediction. No app code here (the app is in `../flatfoot_app/`, and it loads `heel_spur/` and `bunion/` from this folder).
+All the trained AI models, one folder per model: training, testing and prediction. Each `predict.py` loads its weights from its own folder.
 
 | Folder | What it does | X-ray | Test score |
 |---|---|---|---|
@@ -14,7 +14,7 @@ Each folder's README explains the data, how to train and how to test it.
 
 ## What is not here
 
-- **Model weights that can't be shared.** The flat foot and heel spur `.onnx` files are in `../flatfoot_app/`. Bunion and X-ray check weights are not in git (their training data licences are non-commercial / no-derivatives), and neither is the fracture model.
+- **Model weights that can't be shared.** The flat foot and heel spur `.onnx` weights are here in their folders. Bunion and X-ray check weights are not in git (their training data licences are non-commercial / no-derivatives), and neither is the fracture model.
 - **X-rays, labels and masks.** Each README says where to download the dataset.
 - **The newer fracture retrain** (X-rays at every angle, versions A and B) is still on the training PC and not committed yet.
 - **The original flat foot training notebooks** (Google Colab) are not in the repo.
