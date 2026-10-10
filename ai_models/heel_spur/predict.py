@@ -1,9 +1,9 @@
 """Heel spur check for the app: one lateral foot X-ray in, a result out.
 
-Needs only numpy, Pillow and onnxruntime (no PyTorch), like flatfoot_app.py.
+Needs only numpy, Pillow and onnxruntime (no PyTorch), like the flat foot model.
 
     from heel_spur.predict import HeelSpur
-    hs = HeelSpur("flatfoot_app")          # folder with heel_finder.onnx, heel_spur.onnx, heel_spur.json
+    hs = HeelSpur("ai_models/heel_spur")          # folder with heel_finder.onnx, heel_spur.onnx, heel_spur.json
     r = hs.predict(Image.open("xray.jpg"))
     r["probs"]    # {"normal": 0.03, "spur": 0.95, "sever": 0.02}
     r["label"]    # "spur"
@@ -11,7 +11,7 @@ Needs only numpy, Pillow and onnxruntime (no PyTorch), like flatfoot_app.py.
     r["heatmap"]  # 7x7 map over the heel crop for the predicted class, 0..1
     r["crop_box"] # square (x0, y0, x1, y1) in image pixels the heatmap covers
 
-CLI: python predict.py --models ../../flatfoot_app xray.jpg
+CLI: python predict.py xray.jpg
 """
 import argparse
 import json
@@ -93,7 +93,7 @@ class HeelSpur:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", default=os.path.join(os.path.dirname(__file__), "..", "flatfoot_app"))
+    ap.add_argument("--models", default=os.path.dirname(os.path.abspath(__file__)))
     ap.add_argument("images", nargs="+")
     a = ap.parse_args()
     hs = HeelSpur(a.models)

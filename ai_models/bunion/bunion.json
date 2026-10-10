@@ -1,0 +1,11 @@
+{
+  "zoom_weight": 0.8,
+  "note": "Whole-foot pass (bunion_points.onnx) plus zoomed forefoot pass (bunion_zoom.onnx), points averaged with weight 0.8 on the zoomed pass (ai_models/bunion/ensemble.py).",
+  "test": {
+    "set": "HVAngleEst official test split, 160 feet",
+    "hva_within3": 0.85,
+    "ima_within3": 0.9563,
+    "hva_mae": 1.78,
+    "ima_mae": 1.12
+  }
+}

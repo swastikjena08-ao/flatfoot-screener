@@ -4,7 +4,7 @@ Needs only numpy, OpenCV and onnxruntime (no PyTorch). The crops are made with t
 same OpenCV calls as prep.py and zoom_prep.py, so the app sees what the models saw.
 
     from bunion.predict import Bunion
-    b = Bunion("flatfoot_app/models/bunion")
+    b = Bunion("ai_models/bunion")
     for foot in b.predict(gray_uint8):            # or b.predict(gray, boxes={"left": (x0, y0, x1, y1)})
         foot["side"], foot["hva"], foot["ima"], foot["points"]   # points: 6 x 2, image pixels
 
@@ -14,7 +14,7 @@ The model folder holds:
     footfinder.onnx      finds the left/right foot boxes (optional; without it pass `boxes`)
     bunion.json          {"zoom_weight": 0.8} and the test scores to show in the app
 
-CLI: python predict.py --models ../../flatfoot_app/models/bunion xray.jpg
+CLI: python predict.py xray.jpg
 """
 import argparse
 import json
@@ -155,7 +155,7 @@ class Bunion:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", default=os.path.join(os.path.dirname(__file__), "..", "flatfoot_app", "models", "bunion"))
+    ap.add_argument("--models", default=os.path.dirname(os.path.abspath(__file__)))
     ap.add_argument("images", nargs="+")
     a = ap.parse_args()
     b = Bunion(a.models)

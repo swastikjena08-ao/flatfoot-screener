@@ -1,6 +1,6 @@
 # Flat foot model
 
-Looks at a side (lateral) foot X-ray and says whether the arch is flat. Two ResNet-18 models, both in `../../flatfoot_app/`:
+Looks at a side (lateral) foot X-ray and says whether the arch is flat. Two ResNet-18 models, both in this folder:
 
 1. **Classifier** (`model.onnx`): 224x224 image -> flat foot probability plus a 7x7 heatmap of what it looked at.
 2. **Heel bone angle** (`landmarks.onnx`, `landmarks.json`): finds two points on the heel bone, L10 and L11 (names from Lee et al., Yonsei Med J 2025). The L10->L11 angle against the horizontal is the heel bone angle (calcaneal pitch). **Under 17.7° = flat foot.**
@@ -17,15 +17,15 @@ Data: Pesplanus dataset (Mendeley, https://data.mendeley.com/datasets/sss89tjddy
 
 ```
 pip install numpy pillow onnxruntime
-python predict.py xray.jpg                 # models default to ../../flatfoot_app
+python predict.py xray.jpg                 # models load from this folder
 python evaluate.py --data "D:/Pesplanus Dataset" --split pesplanus_split.csv
 ```
 
 ```python
 from predict import FlatFoot
-ff = FlatFoot("../../flatfoot_app")
+ff = FlatFoot(".")
 r = ff.predict(Image.open("xray.jpg"))
 r["angle"], r["flat_by_angle"], r["p_flat"], r["points"], r["left"], r["heatmap"]
 ```
 
-`predict.py` is the model code from `flatfoot_app/flatfoot_app.py` without the window, so it gives the same answers as the app. The original Colab training notebooks are not in this repo.
+`predict.py` is the model code from the old app without the window, so it gives the same answers the app did. The original Colab training notebooks are not in this repo.
