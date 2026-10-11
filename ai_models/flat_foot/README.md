@@ -28,4 +28,4 @@ r = ff.predict(Image.open("xray.jpg"))
 r["angle"], r["flat_by_angle"], r["p_flat"], r["points"], r["left"], r["heatmap"]
 ```
 
-`predict.py` is the model code from the old app without the window, so it gives the same answers the app did. The original Colab training notebooks are not in this repo.
+`predict.py` runs both models with ONNX Runtime only (no PyTorch). The original Colab training notebooks are not in this repo.

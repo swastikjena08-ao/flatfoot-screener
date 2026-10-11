@@ -1,7 +1,6 @@
 """Flat foot models: classifier + heel bone angle (L10/L11 landmarks). No UI.
 
-Model code copied from the old app (minus the window), so it gives the
-same answers as the old app. Two ONNX models, both in this folder:
+Inference uses ONNX Runtime only (no PyTorch). Two ONNX models, both in this folder:
   * model.onnx      ResNet-18 classifier: flat foot probability + 7x7 heatmap.
   * landmarks.onnx  ResNet-18 heatmap model that finds L10 and L11; the L10->L11 angle
                     against the horizontal is the heel bone angle (flat if under 17.7 deg).
