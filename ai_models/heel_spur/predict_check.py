@@ -3,7 +3,7 @@ PyTorch evaluation (evaluate.py) on the test X-rays.
 
 Usage:
   python predict_check.py --data D:/heel-spur --split work/split.csv --locate work/locate/best.pt \
-      --classify work/classify/best.pt --onnx-dir ../flatfoot_app [--n 60]
+      --classify work/classify/best.pt --onnx-dir . [--n 60]
 """
 import argparse
 import os

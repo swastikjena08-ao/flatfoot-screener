@@ -1,0 +1,13 @@
+{
+  "points": [
+    "L10",
+    "L11"
+  ],
+  "input_w": 448,
+  "input_h": 256,
+  "stride": 4,
+  "threshold_deg": 17.7,
+  "pes_planus_mean_deg": 11.1,
+  "normal_mean_deg": 22.6,
+  "n_train": 163
+}

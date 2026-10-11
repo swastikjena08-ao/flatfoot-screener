@@ -2,7 +2,7 @@
 
 Looks at a foot or ankle X-ray and gives **a fracture probability** plus **a 12x12 map of where the break most likely is**, so the doctor's eye goes straight to it. The doctor still decides.
 
-One ResNet-18, started from the flat foot classifier in `../flatfoot_app/model.onnx`. Its last feature map (12x12 at 384 px) goes through a 1x1 conv that scores every cell for "fracture here"; the image score is a soft maximum over the cells. Training uses both the yes/no label and the fracture boxes drawn in FracAtlas.
+One ResNet-18, started from the flat foot classifier in `../flat_foot/model.onnx`. Its last feature map (12x12 at 384 px) goes through a 1x1 conv that scores every cell for "fracture here"; the image score is a soft maximum over the cells. Training uses both the yes/no label and the fracture boxes drawn in FracAtlas.
 
 ## Data
 
@@ -24,7 +24,7 @@ All leg images are used for training (a shin break still teaches what a break lo
 pip install -r requirements.txt
 python download.py --out D:/fracatlas
 python prep.py --data D:/fracatlas/FracAtlas --split work/split.csv --out work/cache.npz
-python train.py --cache work/cache.npz --init ../flatfoot_app/model.onnx --out work/run
+python train.py --cache work/cache.npz --init ../flat_foot/model.onnx --out work/run
 python evaluate.py --cache work/cache.npz --model work/run/best.pt --out work/run --overlays work/overlays
 ```
 

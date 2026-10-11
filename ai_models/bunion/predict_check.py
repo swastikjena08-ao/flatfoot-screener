@@ -4,7 +4,7 @@ Runs the two passes on the official test feet with the dataset's foot boxes and 
 results/ensemble/test_scores.json. With --pass1-csv it also compares the first pass foot by foot
 with evaluate.py's saved predictions.
 
-Usage: python predict_check.py --data /path/to/hvangleest --models ../flatfoot_app/models/bunion \
+Usage: python predict_check.py --data /path/to/hvangleest --models . \
            [--pass1-csv pass1_test_predictions.csv]
 """
 import argparse

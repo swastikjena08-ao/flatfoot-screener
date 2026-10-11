@@ -4,7 +4,7 @@ Two losses: whether the X-ray has a fracture (pooled score), and which 12x12 cel
 (the FracAtlas boxes). The box loss is what lets ~260 fractures go further than labels alone.
 
 Usage:
-  python train.py --cache work/cache.npz --init ../flatfoot_app/model.onnx --out work/run
+  python train.py --cache work/cache.npz --init ../flat_foot/model.onnx --out work/run
 """
 import argparse
 import json

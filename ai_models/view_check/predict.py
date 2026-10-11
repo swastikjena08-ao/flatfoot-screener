@@ -1,15 +1,15 @@
 """X-ray check for the app: says what kind of X-ray was uploaded and which tools can read it.
 
-Needs only numpy, Pillow and onnxruntime (no PyTorch), like flatfoot_app.py.
+Needs only numpy, Pillow and onnxruntime (no PyTorch), like the flat foot model.
 
     from view_check.predict import ViewCheck
-    vc = ViewCheck("flatfoot_app")      # folder with view_check.onnx and view_check.json
+    vc = ViewCheck("ai_models/view_check")      # folder with view_check.onnx and view_check.json
     r = vc.predict(Image.open("xray.jpg"))
     r["view"]    # "side", "top_down", "oblique", "not_foot" or "unsure"
     r["probs"]   # {"side": 0.97, "top_down": 0.01, "oblique": 0.01, "not_foot": 0.01}
     r["tools"]   # ["flat_foot", "heel_spur"] for a side view, ["bunion"] for top-down, [] otherwise
 
-CLI: python predict.py --models ../flatfoot_app xray.jpg [more.jpg ...]
+CLI: python predict.py xray.jpg [more.jpg ...]
 """
 import argparse
 import json
@@ -53,7 +53,7 @@ class ViewCheck:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", default=os.path.join(os.path.dirname(__file__), "..", "flatfoot_app"))
+    ap.add_argument("--models", default=os.path.dirname(os.path.abspath(__file__)))
     ap.add_argument("images", nargs="+")
     a = ap.parse_args()
     vc = ViewCheck(a.models)
