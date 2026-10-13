@@ -31,7 +31,9 @@ def main():
     except ImportError:
         sys.exit("pywebview is not installed. Run: pip install -r requirements-app.txt")
     api = Api(args.data, args.models)
-    webview.create_window(f"Remi AI {__version__}", os.path.join(WEB, "index.html"), js_api=api,
-                          width=1280, height=800, min_size=(1024, 640), maximized=True,
-                          background_color="#070708")
+    window = webview.create_window(f"Remi AI {__version__}", os.path.join(WEB, "index.html"), js_api=api,
+                                   width=1280, height=800, min_size=(1024, 640), maximized=True,
+                                   background_color="#070708")
+    # Some pywebview versions ignore maximized=True on Windows, so maximize once the window is shown.
+    window.events.shown += window.maximize
     webview.start()
