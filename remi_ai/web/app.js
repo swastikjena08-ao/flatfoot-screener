@@ -365,7 +365,7 @@ function patientScreen() {
     <div class="topleft">
       <button class="icon-btn" data-act="back" aria-label="Back to patients">${ICON.left}</button>
       <div class="crumb"><b>${esc(p.name)}</b><span class="num">${esc(p.patient_id)}</span></div>
-      <div class="views" role="tablist">${xs.map(v => `<button class="${v.id === S.xid ? 'on' : ''}" data-xray="${v.id}">${esc(v.view === 'unsure' ? 'Needs view' : v.view_label)} · ${fmtDate(v.date, true)}</button>`).join('')}<button class="add" data-act="addXray">+ Add X-ray</button></div>
+      <div class="views" role="tablist">${xs.map(v => `<button class="${v.id === S.xid ? 'on' : ''}" data-xray="${v.id}">${esc(v.view === 'unsure' ? 'Needs view' : v.view_label)} · ${fmtDate(v.date, true)}<span class="x" data-act="deleteTab" data-del="${v.id}" role="button" aria-label="Remove this X-ray" title="Remove this X-ray">×</span></button>`).join('')}<button class="add" data-act="addXray">+ Add X-ray</button></div>
     </div>
     ${x ? chips() : ''}
     <div class="side">
@@ -562,8 +562,9 @@ async function doAct(act, el) {
     case 'menu': S.menu = S.menu ? false : true; break;
     case 'changeView': S.menu = 'view'; break;
     case 'unreview': S.menu = false; await guard(async () => { await call('mark_reviewed', x.id, !x.reviewed); x.reviewed = !x.reviewed; await reloadPatient(); }); return;
-    case 'deleteXray': S.menu = false; S.modal = { kind: 'confirm' }; break;
-    case 'confirmDelete': S.modal = null; await guard(async () => { await call('delete_xray', x.id); S.pdata = await call('get_patient', S.pid); const xs = allXrays(); if (xs.length) await openXray(xs[0].id); else { S.xray = null; S.xid = null; render(); } toast('X-ray deleted'); }); return;
+    case 'deleteXray': S.menu = false; S.delId = x.id; S.modal = { kind: 'confirm' }; break;
+    case 'deleteTab': S.menu = false; S.delId = +el.dataset.del; S.modal = { kind: 'confirm' }; break;
+    case 'confirmDelete': S.modal = null; await guard(async () => { const del = S.delId; await call('delete_xray', del); S.pdata = await call('get_patient', S.pid); const xs = allXrays(); if (del !== S.xid && xs.some(v => v.id === S.xid)) render(); else if (xs.length) await openXray(xs[0].id); else { S.xray = null; S.xid = null; render(); } toast('X-ray deleted'); }); return;
     case 'note': S.writing = true; render(); { const b = $('#noteBox'); if (b) b.focus(); } return;
     case 'cancelNote': S.writing = false; break;
     case 'saveNote': { const t = ($('#noteBox').value || '').trim(); S.writing = false; if (t) await guard(async () => { await call('add_note', S.pid, t); await reloadPatient(); toast("Note saved to today's visit"); }); render(); return; }
