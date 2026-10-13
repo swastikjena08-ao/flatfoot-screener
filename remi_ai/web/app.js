@@ -93,13 +93,13 @@ function describe(fd, x) {
     return {
       title: cat === 'Not measured' ? 'Arch not measured' : cat,
       sub: `${r.left ? 'Left' : 'Right'} foot · arch height`,
-      tags: (measured ? sevTag(r.severity, cat === 'Flat foot' ? 'Low arch' : cat === 'High arch' ? 'High arch' : 'Arch in normal range') : '<span class="tag">Check the X-ray framing</span>') + '<span class="tag">Side view</span>',
+      tags: (measured ? sevTag(r.severity, cat === 'Flat foot' ? 'Low arch' : cat === 'High arch' ? 'High arch' : 'Arch in normal range') : `<span class="tag">${r.tilt ? 'Foot not level' : 'Check the X-ray framing'}</span>`) + '<span class="tag">Side view</span>',
       bar: { label: 'Flat foot likelihood', pct: Math.round(r.p_flat * 100), calm: r.p_flat < 0.5 },
       score: SCORE.flat_foot,
       tiles: [
-        { k: 'Heel bone angle', v: ang != null ? ang.toFixed(1) + '°' : '—', h: diff != null ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)}° since ${fmtDate(S.xray.previous.date)}` : measured ? 'Lower means flatter' : 'Could not measure reliably', red: diff != null && diff < 0 },
+        { k: 'Heel bone angle', v: ang != null ? ang.toFixed(1) + '°' : '—', h: diff != null ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)}° since ${fmtDate(S.xray.previous.date)}` : measured ? 'Lower means flatter' : r.tilt ? 'Foot not standing level' : 'Could not measure reliably', red: diff != null && diff < 0 },
         { k: 'Normal range', v: '17.7–30°', h: 'Under 17.7° is flat foot' },
-        { k: 'Result', v: cat, sm: true, h: !measured ? 'Heel points look misplaced' : r.p_flat >= 0.5 === (cat === 'Flat foot') ? 'Both checks agree' : 'Angle and classifier differ' },
+        { k: 'Result', v: cat, sm: true, h: !measured ? 'Needs a standing side view' : r.p_flat >= 0.5 === (cat === 'Flat foot') ? 'Both checks agree' : 'Angle and classifier differ' },
         { k: 'Foot', v: r.left ? 'Left' : 'Right', sm: true, h: 'Found automatically' }
       ],
       compare: prev && pAng != null && ang != null && r.points.L10 ? { region: flatRegion(r.points), prevRegion: flatRegion(prev.points), a: pAng.toFixed(1) + '°', b: ang != null ? ang.toFixed(1) + '°' : '—' } : null
@@ -207,13 +207,21 @@ function overlaySvg(x, fd, u) {
   }
   return out;
 }
+function overlayAll(x, fd, u) {
+  if (!fd || S.overlay === 0) return '';
+  const others = findingList(x).filter(o => !(o.key === fd.key && o.i === fd.i));
+  const keep = S.overlay; S.overlay = 1;  // AI map only for the selected finding
+  const rest = others.map(o => overlaySvg(x, o, u)).join('');
+  S.overlay = keep;
+  return `<g opacity="0.6">${rest}</g>${overlaySvg(x, fd, u)}`;
+}
 function xraySvg(x, fd) {
   const u = Math.max(x.width, x.height) / 900;
   FRAME = [x.width, x.height];
   const filt = `filter: brightness(${(0.5 + S.bright / 100).toFixed(2)}) contrast(${(0.5 + S.contrast / 100).toFixed(2)});`;
   return `<svg class="xr" viewBox="0 0 ${x.width} ${x.height}" preserveAspectRatio="xMidYMid meet" style="transform: scale(${S.zoom / 100})" role="img" aria-label="${esc(x.view_label)} X-ray">
     <image href="${x.image}" x="0" y="0" width="${x.width}" height="${x.height}" preserveAspectRatio="none" style="${filt}"/>
-    ${overlaySvg(x, fd, u)}
+    ${overlayAll(x, fd, u)}
   </svg>`;
 }
 function lens(image, w, h, region) {
