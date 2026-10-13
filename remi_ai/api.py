@@ -87,7 +87,7 @@ class Api:
     # ---- start-up and sign-in --------------------------------------------------------
     @safe
     def app_info(self):
-        return {"has_doctors": self._store.has_doctors(),
+        return {"has_doctors": self._store.has_doctors(), "last_doctor_id": self._store.setting("last_doctor_id", ""),
                 "models": self._engine.status(), "model_errors": self._engine.errors,
                 "checks": CHECKS, "views": VIEWS, "history_items": DEFAULT_HISTORY,
                 "doctor": self._doctor, "data_dir": self._store.dir}
@@ -95,6 +95,7 @@ class Api:
     @safe
     def create_doctor(self, doctor_id, name, password, clinic=""):
         self._doctor = self._store.add_doctor(doctor_id, name, password, clinic)
+        self._store.set_setting("last_doctor_id", self._doctor["doctor_id"])
         return self._doctor
 
     @safe
@@ -103,6 +104,7 @@ class Api:
         if d is None:
             raise ValueError("That doctor ID and password don't match.")
         self._doctor = d
+        self._store.set_setting("last_doctor_id", d["doctor_id"])
         return d
 
     @safe

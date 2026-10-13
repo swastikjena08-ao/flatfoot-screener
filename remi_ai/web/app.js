@@ -19,6 +19,7 @@ const ICON = {
 };
 
 const S = {
+  newDoctor: false,
   screen: 'loading', info: null, doctor: null, patients: [], q: '',
   pid: null, pdata: null, xid: null, xray: null, f: 0, tab: 'finding',
   full: false, assist: false, menu: false, writing: false, busy: '', modal: null,
@@ -221,16 +222,17 @@ function lens(image, w, h, region) {
 
 /* ---------- screens ---------- */
 function loginScreen() {
-  const first = !S.info.has_doctors;
+  const first = !S.info.has_doctors || S.newDoctor;
   return `<div class="login"><form class="login-card" id="${first ? 'setupForm' : 'loginForm'}">
-    <div><div class="eyebrow">Remi AI</div><h2>${first ? 'Create your doctor account' : 'Sign in'}</h2></div>
+    <div><div class="eyebrow">Remi AI</div><h2>${!S.info.has_doctors ? 'Create your doctor account' : first ? 'New doctor account' : 'Sign in'}</h2></div>
     ${first ? `<div class="field"><label for="docName">Your name</label><input id="docName" placeholder="Dr. Kavya Rao" required></div>
       <div class="field"><label for="clinic">Clinic</label><input id="clinic" placeholder="Optional"></div>` : ''}
-    <div class="field"><label for="docId">Doctor ID</label><input id="docId" autocomplete="username" required placeholder="e.g. DR-2207"></div>
+    <div class="field"><label for="docId">Doctor ID</label><input id="docId" autocomplete="username" required placeholder="e.g. DR-2207" value="${first ? '' : esc(S.info.last_doctor_id || '')}"></div>
     <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="${first ? 'new-password' : 'current-password'}" required placeholder="${first ? 'At least 6 characters' : ''}"></div>
     <div class="err" id="loginErr"></div>
     <button class="btn solid" type="submit">${first ? 'Create account' : 'Sign in'}</button>
-    <small>${first ? 'This is the first sign-in on this computer. Patient files are kept here, in your own folder.' : 'Patient files stay on this computer.'}</small>
+    <small>${!S.info.has_doctors ? 'This is the first sign-in on this computer. Patient files are kept here, in your own folder.' : 'Every doctor on this computer sees the same patient list.'}</small>
+    ${S.info.has_doctors ? `<button type="button" class="btn" data-act="toggleNewDoctor" style="justify-content:center">${first ? 'Back to sign in' : 'New doctor account'}</button>` : ''}
   </form></div>`;
 }
 function findingTags(list) {
@@ -536,6 +538,7 @@ async function doAct(act, el) {
   const x = S.xray;
   switch (act) {
     case 'back': return goList();
+    case 'toggleNewDoctor': S.newDoctor = !S.newDoctor; render(); return;
     case 'logout': await call('logout'); S.doctor = null; S.chat = []; S.assist = false; S.screen = 'login'; S.info = await call('app_info'); render(); return;
     case 'newPatient': return openNewPatient();
     case 'closeModal': S.modal = null; render(); return;
@@ -610,7 +613,7 @@ document.addEventListener('submit', async (e) => {
     try {
       S.doctor = id === 'loginForm' ? await call('login', $('#docId').value, $('#pw').value)
         : await call('create_doctor', $('#docId').value, $('#docName').value, $('#pw').value, $('#clinic').value);
-      await goList();
+      S.newDoctor = false; await goList();
     } catch (x) { err.textContent = x.message; }
   }
   if (id === 'patientForm') {
