@@ -29,6 +29,7 @@ th { color: #6b6d72; font-weight: 500; width: 170px; }
 .ok { color: #1f7a4d; font-weight: 600; }
 .small { font-size: 12px; color: #6b6d72; }
 .letter p { margin: 0 0 12px; }
+.logo { height: 34px; display: block; margin-bottom: 20px; }
 """
 
 
@@ -54,9 +55,20 @@ def thumb(path, size=440):
         return ""
 
 
+LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "img", "remi_wordmark.png")
+
+
+def _logo():
+    try:
+        with open(LOGO, "rb") as f:
+            return f"<img class='logo' src='data:image/png;base64,{base64.b64encode(f.read()).decode()}' alt='Remi'>"
+    except OSError:
+        return ""
+
+
 def _page(title, body):
     return (f"<!doctype html><html><head><meta charset='utf-8'><title>{esc(title)}</title>"
-            f"<style>{CSS}</style></head><body>{body}</body></html>")
+            f"<style>{CSS}</style></head><body>{_logo()}{body}</body></html>")
 
 
 def _patient_table(p, hist):

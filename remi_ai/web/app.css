@@ -246,3 +246,14 @@ textarea.notes { width: 100%; min-height: 70px; resize: vertical; background: rg
 .f-list .sev.warn { background: #f5a524; }
 .f-list .sev.alert { background: var(--red); }
 .f-list .sev.none { background: var(--muted); }
+
+/* Remi logo: the mark keeps its navy and teal on a light tile so it reads on the dark UI */
+.logo { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: #fff; flex: none; }
+.logo img { width: 78%; height: 78%; object-fit: contain; }
+.logo.sm { width: 26px; height: 26px; margin-right: 10px; }
+.brand { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
+.brand b { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--fg); }
+.brand > span:last-child { font-size: 11px; color: var(--muted); letter-spacing: .12em; margin-left: -4px; align-self: flex-end; padding-bottom: 3px; }
+.brand.big { margin-bottom: 0; }
+.brand.big .logo { width: 42px; height: 42px; border-radius: 11px; }
+.brand.big b { font-size: 22px; }

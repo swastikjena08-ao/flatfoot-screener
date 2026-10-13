@@ -242,7 +242,7 @@ function lens(image, w, h, region) {
 function loginScreen() {
   const first = !S.info.has_doctors || S.newDoctor;
   return `<div class="login"><form class="login-card" id="${first ? 'setupForm' : 'loginForm'}">
-    <div><div class="eyebrow">Remi AI</div><h2>${!S.info.has_doctors ? 'Create your doctor account' : first ? 'New doctor account' : 'Sign in'}</h2></div>
+    <div class="brand big"><span class="logo"><img src="img/remi_mark.png" alt=""></span><b>Remi</b><span>AI</span></div><div><h2>${!S.info.has_doctors ? 'Create your doctor account' : first ? 'New doctor account' : 'Sign in'}</h2></div>
     ${first ? `<div class="field"><label for="docName">Your name</label><input id="docName" placeholder="Dr. Kavya Rao" required></div>
       <div class="field"><label for="clinic">Clinic</label><input id="clinic" placeholder="Optional"></div>` : ''}
     <div class="field"><label for="docId">Doctor ID</label><input id="docId" autocomplete="username" required placeholder="e.g. DR-2207" value="${first ? '' : esc(S.info.last_doctor_id || '')}"></div>
@@ -264,7 +264,7 @@ function listScreen() {
   const models = S.info.models, missing = Object.keys(models).filter(k => !models[k]);
   return `<div class="list">
     <div class="list-head">
-      <div><div class="eyebrow">Signed in as ${esc(S.doctor.name)}</div><h2>Patients</h2></div>
+      <div><div class="brand"><span class="logo"><img src="img/remi_mark.png" alt=""></span><b>Remi</b><span>AI</span></div><div class="eyebrow">Signed in as ${esc(S.doctor.name)}</div><h2>Patients</h2></div>
       <div class="list-tools">
         <label class="search">${ICON.search}<input id="listSearch" placeholder="Search name or ID" value="${esc(S.q)}"></label>
         <button class="btn solid" data-act="newPatient">${ICON.plus}New patient</button>
@@ -449,7 +449,7 @@ function assistPanel(global) {
     ? ['What do I do next?', 'Explain this finding', 'Why was a check skipped?', 'Show the record']
     : ['What do I do next?', 'Add a new patient', 'How accurate are the models?'];
   return `<div class="assist${global ? ' global' : ''}" role="dialog" aria-label="Ask Remi">
-    <div class="assist-head"><div><b>Ask Remi</b><span>Voice or text · guides you step by step</span></div>
+    <div class="assist-head"><span class="logo sm"><img src="img/remi_mark.png" alt=""></span><div style="flex:1"><b>Ask Remi</b><span>Voice or text · guides you step by step</span></div>
       <div style="display:flex;gap:6px"><button class="icon-btn${S.speak ? '' : ' dim'}" data-act="speak" aria-label="Read answers aloud" title="Read answers aloud">${ICON.speaker}</button><button class="icon-btn" data-act="closeAssist" aria-label="Close">${ICON.close}</button></div></div>
     <div class="msgs" id="msgs">${S.chat.map(m => `<div class="msg ${m.me ? 'me' : 'bot'}">${esc(m.t)}</div>`).join('')}</div>
     <div class="sugg">${sugg.map(s => `<button data-say="${s}">${s}</button>`).join('')}</div>
