@@ -257,3 +257,16 @@ textarea.notes { width: 100%; min-height: 70px; resize: vertical; background: rg
 .brand.big { margin-bottom: 0; }
 .brand.big .logo { width: 42px; height: 42px; border-radius: 11px; }
 .brand.big b { font-size: 22px; }
+
+/* Measuring lines: one colour per bone line so they're easy to tell apart */
+.ov-line.c-toe, .ov-dot.c-toe { stroke: #f5b544; fill: #f5b544; }
+.ov-line.c-mt1, .ov-dot.c-mt1 { stroke: #2ec4b6; fill: #2ec4b6; }
+.ov-line.c-mt2, .ov-dot.c-mt2 { stroke: #7aa7ff; fill: #7aa7ff; }
+.ov-line.c-arch, .ov-dot.c-arch { stroke: #2ec4b6; fill: #2ec4b6; }
+.ov-line { stroke-width: 2.4; }
+.ov-label.c-toe { fill: #f5b544; } .ov-label.c-mt2 { fill: #7aa7ff; } .ov-label.c-arch { fill: #2ec4b6; }
+.ov-pill.flag { stroke: rgba(229,72,77,.8); }
+.ov-dot { stroke: rgba(0,0,0,.6); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ov-grab { fill: transparent; cursor: grab; pointer-events: all; }
+.ov-grab:hover { fill: rgba(255,255,255,.12); }
+body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }

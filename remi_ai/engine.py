@@ -61,6 +61,48 @@ def bunion_grade(hva, ima):
     return ["No bunion", "Mild bunion", "Moderate bunion", "Severe bunion"][max(h, i)]
 
 
+def _acute_angle(a0, a1, b0, b1):
+    """Acute angle in degrees between line a0-a1 and line b0-b1 (same as ai_models/bunion)."""
+    v1 = (a1[0] - a0[0], a1[1] - a0[1])
+    v2 = (b1[0] - b0[0], b1[1] - b0[1])
+    n = math.hypot(*v1) * math.hypot(*v2)
+    if n == 0:
+        return 0.0
+    t = math.degrees(math.acos(max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / n))))
+    return min(t, 180 - t)
+
+
+def adjust_points(results, key, index, points):
+    """The doctor moved the measuring points: store them and recompute the angles and grade."""
+    checks = results.get("checks", {})
+    if key == "flat_foot" and "flat_foot" in checks:
+        r = checks["flat_foot"]
+        if not isinstance(points, dict) or not {"L10", "L11"} <= set(points):
+            raise ValueError("Flat foot needs both heel points.")
+        p10, p11 = [float(v) for v in points["L10"]], [float(v) for v in points["L11"]]
+        dx = p11[0] - p10[0]
+        angle = round(math.degrees(math.atan2(p11[1] - p10[1], -dx if r["left"] else dx)), 1)
+        cat = flat_category(angle) if 0 <= angle <= 45 else "Not measured"
+        r.update(points={**r["points"], "L10": p10, "L11": p11}, angle=angle, category=cat, tilt=0,
+                 reason="" if cat != "Not measured" else "The heel points don't give a usable angle.",
+                 severity="ok" if cat in ("Normal arch", "Not measured") else "warn", edited=True)
+        return r
+    if key == "bunion" and "bunion" in checks:
+        feet = checks["bunion"]["feet"]
+        if not 0 <= int(index) < len(feet) or len(points) != 6:
+            raise ValueError("Bunion needs six points.")
+        f = feet[int(index)]
+        p = [[float(a), float(b)] for a, b in points]
+        hva = round(_acute_angle(p[0], p[1], p[2], p[3]), 1)
+        ima = round(_acute_angle(p[2], p[3], p[4], p[5]), 1)
+        grade = bunion_grade(hva, ima)
+        f.update(points=p, hva=hva, ima=ima, grade=grade, edited=True,
+                 severity="ok" if grade == "No bunion" else "warn" if grade == "Mild bunion" else "alert")
+        checks["bunion"]["severity"] = max((x["severity"] for x in feet), key=["ok", "warn", "alert"].index)
+        return f
+    raise ValueError("That finding has no points to adjust.")
+
+
 def _points_fit_heel(r, box, tilt=0):
     """True when the arch angle points sit where they should relative to the heel box:
     the lower point (L11) on the underside of the heel, the other one level with the heel

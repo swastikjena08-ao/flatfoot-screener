@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from . import report
-from .engine import CHECKS, VIEWS, Engine, findings
+from .engine import CHECKS, VIEWS, Engine, adjust_points, findings
 from .store import DEFAULT_HISTORY, Store
 
 DISPLAY_MAX = 1800  # longest side of the copy sent to the window
@@ -244,6 +244,16 @@ class Api:
             out["previous"] = {"id": prev["id"], "date": self._store.visit(prev["visit_id"])["date"],
                                "image": purl, "width": pw, "height": ph, "results": prev["results"]}
         return out
+
+    @safe
+    def adjust_points(self, xray_id, key, index, points):
+        """The doctor dragged the measuring points; save them and return the recomputed finding."""
+        self._need_login()
+        x = self._store.xray(xray_id)
+        results = x["results"]
+        finding = adjust_points(results, key, index, points)
+        self._store.set_results(xray_id, results)
+        return finding
 
     @safe
     def mark_reviewed(self, xray_id, reviewed=True):

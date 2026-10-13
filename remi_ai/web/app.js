@@ -175,14 +175,20 @@ function heatImage(grid, cmapAlpha = 0.85) {
   return c.toDataURL();
 }
 let FRAME = [0, 0];  // width and height of the X-ray being drawn, so labels stay inside it
-function pill(x, y, text, u, red) {
-  const fs = 15 * u, w = (text.length * 0.62 + 1.4) * fs, h = fs * 1.9;
+function pill(x, y, text, u, col, flag) {
+  if (col === true || col === false) { flag = col; col = ''; }
+  const fs = 15 * u, w = (text.length * 0.68 + 1.4) * fs, h = fs * 1.9;
   x = Math.max(8 * u, Math.min(x, FRAME[0] - w - 8 * u));
   y = Math.max(h / 2 + 8 * u, Math.min(y, FRAME[1] - h / 2 - 8 * u));
-  return `<rect class="ov-pill" x="${x}" y="${y - h / 2}" width="${w}" height="${h}" rx="${7 * u}"/>
-    <text class="ov-label${red ? ' red' : ''}" x="${x + 0.7 * fs}" y="${y + fs * 0.36}" font-size="${fs}">${esc(text)}</text>`;
+  return `<rect class="ov-pill${flag ? ' flag' : ''}" x="${x}" y="${y - h / 2}" width="${w}" height="${h}" rx="${7 * u}"/>
+    <text class="ov-label ${col || (flag ? 'red' : '')}" x="${x + 0.7 * fs}" y="${y + fs * 0.36}" font-size="${fs}">${esc(text)}</text>`;
 }
-function overlaySvg(x, fd, u) {
+// A measuring point: a dot, plus a wider invisible grab area the doctor can drag when the finding is selected.
+function handle(main, id, cx, cy, u, col) {
+  return `<circle class="ov-dot ${col}" cx="${cx}" cy="${cy}" r="${(main ? 4.5 : 3.5) * u}"/>` +
+    (main ? `<circle class="ov-grab" data-pt="${id}" cx="${cx}" cy="${cy}" r="${14 * u}"><title>Drag to adjust</title></circle>` : '');
+}
+function overlaySvg(x, fd, u, main) {
   if (!fd || S.overlay === 0) return '';
   const r = fd.r;
   let out = '';
@@ -195,9 +201,9 @@ function overlaySvg(x, fd, u) {
     const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
     const ex = x1 + dx * 1.25, ey = y1 + dy * 1.25, dir = Math.sign(dx) || 1;
     out += `<line class="ov-dash" x1="${x1 - dir * len * 0.3}" y1="${y1}" x2="${x1 + dir * len * 1.6}" y2="${y1}"/>
-      <line class="ov-line" x1="${x1}" y1="${y1}" x2="${ex}" y2="${ey}"/>
-      <circle class="ov-dot" cx="${x1}" cy="${y1}" r="${4 * u}"/><circle class="ov-dot" cx="${x2}" cy="${y2}" r="${4 * u}"/>
-      ${pill(Math.min(x1, x2) + Math.abs(dx) * 0.25, Math.max(y1, y2) + 30 * u, `Arch ${r.angle != null ? r.angle.toFixed(1) + '°' : '—'}`, u)}`;
+      <line class="ov-line c-arch" x1="${x1}" y1="${y1}" x2="${ex}" y2="${ey}"/>
+      ${handle(main, 'L10', x1, y1, u, 'c-arch')}${handle(main, 'L11', x2, y2, u, 'c-arch')}
+      ${pill(Math.min(x1, x2) + Math.abs(dx) * 0.25, Math.max(y1, y2) + 30 * u, `Arch ${r.angle != null ? r.angle.toFixed(1) + '°' : '—'}`, u, 'c-arch', r.severity !== 'ok')}`;
   }
   if (fd.key === 'heel_spur') {
     const [a, b, c, d] = r.box, cx = (a + c) / 2, cy = (b + d) / 2, rx = (c - a) / 2 * 1.05, ry = (d - b) / 2 * 1.05;
@@ -206,14 +212,16 @@ function overlaySvg(x, fd, u) {
       ${pill(cx - rx, d + 26 * u, spur ? 'Heel spur' : r.label === 'sever' ? "Sever's" : 'No spur seen', u, spur)}`;
   }
   if (fd.key === 'bunion') {
+    // Big toe bone, first and second long bones: each its own colour; HVA and IMA labels match the line they start from.
     const p = r.points, ext = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+    const cols = ['c-toe', 'c-mt1', 'c-mt2'];
     const seg = (i, cls) => { const s = ext(p[i + 1], p[i], 1.15), e = ext(p[i], p[i + 1], 1.15); return `<line class="${cls}" x1="${s[0]}" y1="${s[1]}" x2="${e[0]}" y2="${e[1]}"/>`; };
-    out += seg(0, 'ov-line') + seg(2, 'ov-line') + seg(4, 'ov-dash');
-    p.forEach(q => { out += `<circle class="ov-dot" cx="${q[0]}" cy="${q[1]}" r="${3.5 * u}"/>`; });
+    out += seg(0, 'ov-line c-toe') + seg(2, 'ov-line c-mt1') + seg(4, 'ov-line c-mt2');
+    p.forEach((q, i) => { out += handle(main, i, q[0], q[1], u, cols[i >> 1]); });
     const sideX = r.side === 'left' ? 1 : -1;
     const hx = Math.min(p[0][0], p[1][0], p[2][0]) - 150 * u, hy = p[1][1];
-    out += pill(sideX > 0 ? Math.max(p[0][0], p[1][0]) + 30 * u : hx, hy, `HVA ${r.hva.toFixed(1)}°`, u, r.hva >= 15);
-    out += pill(Math.max(p[3][0], p[5][0]) + 30 * u, (p[3][1] + p[5][1]) / 2, `IMA ${r.ima.toFixed(1)}°`, u, r.ima >= 9);
+    out += pill(sideX > 0 ? Math.max(p[0][0], p[1][0]) + 30 * u : hx, hy, `HVA ${r.hva.toFixed(1)}°`, u, 'c-toe', r.hva >= 15);
+    out += pill(Math.max(p[3][0], p[5][0]) + 30 * u, (p[3][1] + p[5][1]) / 2, `IMA ${r.ima.toFixed(1)}°`, u, 'c-mt2', r.ima >= 9);
   }
   return out;
 }
@@ -223,7 +231,7 @@ function overlayAll(x, fd, u) {
   const keep = S.overlay; S.overlay = 1;  // AI map only for the selected finding
   const rest = others.map(o => overlaySvg(x, o, u)).join('');
   S.overlay = keep;
-  return `<g opacity="0.6">${rest}</g>${overlaySvg(x, fd, u)}`;
+  return `<g opacity="0.6">${rest}</g>${overlaySvg(x, fd, u, true)}`;
 }
 function xraySvg(x, fd) {
   const u = Math.max(x.width, x.height) / 900;
@@ -231,7 +239,7 @@ function xraySvg(x, fd) {
   const filt = `filter: brightness(${(0.5 + S.bright / 100).toFixed(2)}) contrast(${(0.5 + S.contrast / 100).toFixed(2)});`;
   return `<svg class="xr" viewBox="0 0 ${x.width} ${x.height}" preserveAspectRatio="xMidYMid meet" style="transform: scale(${S.zoom / 100})" role="img" aria-label="${esc(x.view_label)} X-ray">
     <image href="${x.image}" x="0" y="0" width="${x.width}" height="${x.height}" preserveAspectRatio="none" style="${filt}"/>
-    ${overlayAll(x, fd, u)}
+    <g id="ov">${overlayAll(x, fd, u)}</g>
   </svg>`;
 }
 function lens(image, w, h, region) {
@@ -323,7 +331,7 @@ function findingPanel() {
   return `${all}
     <div class="card">
       <div class="f-title">${esc(c.title)}</div><div class="f-sub">${esc(c.sub)}</div>
-      <div class="f-tags">${c.tags}${x.reviewed ? `<span class="tag green">${ICON.check}&nbsp;Reviewed</span>` : ''}</div>
+      <div class="f-tags">${c.tags}${fd.r.edited ? '<span class="tag">Points adjusted by you</span>' : ''}${x.reviewed ? `<span class="tag green">${ICON.check}&nbsp;Reviewed</span>` : ''}</div>
     </div>
     <div class="card">
       <div class="conf-head"><span>${esc(c.bar.label)}</span><b class="num">${c.bar.pct}<small>%</small></b></div>
@@ -681,3 +689,48 @@ document.addEventListener('drop', (e) => { if (S.screen !== 'patient') return; e
   } catch (e) { document.body.innerHTML = `<p style="padding:24px;color:#fff">Remi AI could not start: ${esc(e.message)}</p>`; return; }
   render();
 })();
+
+/* ---------- dragging the measuring points ---------- */
+// The doctor can grab any point on the selected finding's lines. Angles update while dragging;
+// on release Python recomputes and saves them (marked as adjusted by the doctor).
+function acute(a0, a1, b0, b1) {
+  const v1 = [a1[0] - a0[0], a1[1] - a0[1]], v2 = [b1[0] - b0[0], b1[1] - b0[1]];
+  const n = Math.hypot(...v1) * Math.hypot(...v2); if (!n) return 0;
+  const t = Math.acos(Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / n))) * 180 / Math.PI;
+  return Math.min(t, 180 - t);
+}
+function liveAngles(fd) {
+  const r = fd.r;
+  if (fd.key === 'bunion') { const p = r.points; r.hva = acute(p[0], p[1], p[2], p[3]); r.ima = acute(p[2], p[3], p[4], p[5]); }
+  else { const [a, b] = [r.points.L10, r.points.L11], dx = b[0] - a[0]; r.angle = Math.atan2(b[1] - a[1], r.left ? -dx : dx) * 180 / Math.PI; }
+}
+let DRAG = null;
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('.ov-grab'); if (!h || !S.xray) return;
+  const fd = findingList(S.xray)[S.f]; if (!fd) return;
+  e.preventDefault(); e.stopPropagation();
+  DRAG = { fd, id: h.dataset.pt, svg: h.ownerSVGElement, moved: false };
+  document.body.classList.add('dragging');
+}, true);
+document.addEventListener('pointermove', (e) => {
+  if (!DRAG) return;
+  const m = DRAG.svg.getScreenCTM(); if (!m) return;
+  const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+  const x = Math.max(0, Math.min(S.xray.width, pt.x)), y = Math.max(0, Math.min(S.xray.height, pt.y));
+  const r = DRAG.fd.r;
+  if (DRAG.fd.key === 'bunion') r.points[+DRAG.id] = [x, y]; else r.points[DRAG.id] = [x, y];
+  liveAngles(DRAG.fd); DRAG.moved = true;
+  const u = Math.max(S.xray.width, S.xray.height) / 900, g = DRAG.svg.querySelector('#ov');
+  if (g) g.innerHTML = overlayAll(S.xray, DRAG.fd, u);
+});
+document.addEventListener('pointerup', async () => {
+  if (!DRAG) return;
+  const { fd, moved } = DRAG; DRAG = null; document.body.classList.remove('dragging');
+  if (!moved) return;
+  await guard(async () => {
+    const pts = fd.key === 'bunion' ? fd.r.points : { L10: fd.r.points.L10, L11: fd.r.points.L11 };
+    const r = await call('adjust_points', S.xid, fd.key, fd.i || 0, pts);
+    if (fd.key === 'bunion') S.xray.results.checks.bunion.feet[fd.i] = r; else S.xray.results.checks.flat_foot = r;
+    await reloadPatient();
+  });
+});
