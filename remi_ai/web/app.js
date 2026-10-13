@@ -163,8 +163,11 @@ function heatImage(grid, cmapAlpha = 0.85) {
   ctx.putImageData(d, 0, 0);
   return c.toDataURL();
 }
+let FRAME = [0, 0];  // width and height of the X-ray being drawn, so labels stay inside it
 function pill(x, y, text, u, red) {
   const fs = 15 * u, w = (text.length * 0.62 + 1.4) * fs, h = fs * 1.9;
+  x = Math.max(8 * u, Math.min(x, FRAME[0] - w - 8 * u));
+  y = Math.max(h / 2 + 8 * u, Math.min(y, FRAME[1] - h / 2 - 8 * u));
   return `<rect class="ov-pill" x="${x}" y="${y - h / 2}" width="${w}" height="${h}" rx="${7 * u}"/>
     <text class="ov-label${red ? ' red' : ''}" x="${x + 0.7 * fs}" y="${y + fs * 0.36}" font-size="${fs}">${esc(text)}</text>`;
 }
@@ -205,6 +208,7 @@ function overlaySvg(x, fd, u) {
 }
 function xraySvg(x, fd) {
   const u = Math.max(x.width, x.height) / 900;
+  FRAME = [x.width, x.height];
   const filt = `filter: brightness(${(0.5 + S.bright / 100).toFixed(2)}) contrast(${(0.5 + S.contrast / 100).toFixed(2)});`;
   return `<svg class="xr" viewBox="0 0 ${x.width} ${x.height}" preserveAspectRatio="xMidYMid meet" style="transform: scale(${S.zoom / 100})" role="img" aria-label="${esc(x.view_label)} X-ray">
     <image href="${x.image}" x="0" y="0" width="${x.width}" height="${x.height}" preserveAspectRatio="none" style="${filt}"/>
@@ -216,20 +220,6 @@ function lens(image, w, h, region) {
 }
 
 /* ---------- screens ---------- */
-function introScreen() {
-  return `<div class="intro"><div class="intro-inner">
-    <div><div class="eyebrow">Remi AI · foot X-ray assistant</div>
-      <h1>Reads the foot X-ray, so you can spend the time on the patient.</h1></div>
-    <p class="lead">Remi checks each foot X-ray with the AI model that fits it and puts the measurements next to the image. You stay in charge: every number is a suggestion you can accept, change or ignore.</p>
-    <div class="steps">
-      <div class="step"><div class="n">1</div><div><b>Sign in with your doctor ID</b><span>Your patients and notes stay on this computer.</span></div></div>
-      <div class="step"><div class="n">2</div><div><b>Open a patient or add a new one</b><span>Each patient has their own record: first visit, medical history and every X-ray over time.</span></div></div>
-      <div class="step"><div class="n">3</div><div><b>Add an X-ray</b><span>Remi first checks what kind of X-ray it is. A side view gets the flat foot and heel spur checks. A top-down view gets the bunion angles. Anything that isn't a foot X-ray is skipped.</span></div></div>
-      <div class="step"><div class="n">4</div><div><b>Review the findings</b><span>Compare with the last visit, add notes, refer the patient or export a report. Ask Remi by voice or text if you're unsure what to do next.</span></div></div>
-    </div>
-    <div class="foot"><button class="btn solid" data-act="introDone">Get started</button><span>Remi helps with screening. It does not replace a doctor's diagnosis.</span></div>
-  </div></div>`;
-}
 function loginScreen() {
   const first = !S.info.has_doctors;
   return `<div class="login"><form class="login-card" id="${first ? 'setupForm' : 'loginForm'}">
@@ -545,7 +535,6 @@ async function uploadFile(file) {
 async function doAct(act, el) {
   const x = S.xray;
   switch (act) {
-    case 'introDone': await call('set_intro_done', true); S.screen = 'login'; render(); return;
     case 'back': return goList();
     case 'logout': await call('logout'); S.doctor = null; S.chat = []; S.assist = false; S.screen = 'login'; S.info = await call('app_info'); render(); return;
     case 'newPatient': return openNewPatient();
@@ -582,7 +571,7 @@ function render() {
   if (S.screen === 'loading') { el.innerHTML = '<div class="login"><div class="spinner"></div></div>'; return; }
   el.className = 'screen' + (S.screen === 'patient' ? ' patient-screen' : '');
   const chatScroll = $('#msgs') ? $('#msgs').scrollTop : null;
-  el.innerHTML = { intro: introScreen, login: loginScreen, list: listScreen, patient: patientScreen }[S.screen]();
+  el.innerHTML = { login: loginScreen, list: listScreen, patient: patientScreen }[S.screen]();
   if (S.modal) {
     const m = document.createElement('div');
     m.innerHTML = S.modal.kind === 'patient' ? patientForm(S.modal.edit ? S.pdata.patient : null, S.modal.edit ? S.pdata.history : null)
@@ -663,7 +652,7 @@ document.addEventListener('drop', (e) => { if (S.screen !== 'patient') return; e
   render();
   try {
     S.info = await call('app_info');
-    S.screen = S.info.intro_done ? 'login' : 'intro';
+    S.screen = 'login';
     if (S.info.doctor) { S.doctor = S.info.doctor; await goList(); return; }
   } catch (e) { document.body.innerHTML = `<p style="padding:24px;color:#fff">Remi AI could not start: ${esc(e.message)}</p>`; return; }
   render();

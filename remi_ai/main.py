@@ -32,5 +32,6 @@ def main():
         sys.exit("pywebview is not installed. Run: pip install -r requirements-app.txt")
     api = Api(args.data, args.models)
     webview.create_window(f"Remi AI {__version__}", os.path.join(WEB, "index.html"), js_api=api,
-                          width=1440, height=900, min_size=(1100, 700), background_color="#070708")
+                          width=1280, height=800, min_size=(1024, 640), maximized=True,
+                          background_color="#070708")
     webview.start()

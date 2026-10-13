@@ -87,15 +87,10 @@ class Api:
     # ---- start-up and sign-in --------------------------------------------------------
     @safe
     def app_info(self):
-        return {"has_doctors": self._store.has_doctors(), "intro_done": self._store.setting("intro_done", False),
+        return {"has_doctors": self._store.has_doctors(),
                 "models": self._engine.status(), "model_errors": self._engine.errors,
                 "checks": CHECKS, "views": VIEWS, "history_items": DEFAULT_HISTORY,
                 "doctor": self._doctor, "data_dir": self._store.dir}
-
-    @safe
-    def set_intro_done(self, done=True):
-        self._store.set_setting("intro_done", bool(done))
-        return {"ok": True}
 
     @safe
     def create_doctor(self, doctor_id, name, password, clinic=""):
