@@ -9,6 +9,7 @@ const ICON = {
   dots: '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>',
   pen: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 2.5l2.5 2.5L6 12.5H3.5V10z"/></svg>',
   expand: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3h5v5M8 17H3v-5M17 3l-6 6M3 17l6-6"/></svg>',
+  heat: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5c.5 3-3.5 4.6-3.5 8.6a3.5 3.5 0 0 0 7 0c0-1.6-.8-2.7-1.6-3.6-.2 1.4-.9 2.2-1.8 2.5.6-2.6-.2-5.2-.1-7.5z"/></svg>',
   spark: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 18 18"/><path d="M9 5.5v7M5.5 9h7" stroke-width="1.3"/></svg>',
   mic: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15"/></svg>',
   speaker: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.5a6 6 0 0 1 0 9"/></svg>',
@@ -23,9 +24,9 @@ const S = {
   screen: 'loading', info: null, doctor: null, patients: [], q: '',
   pid: null, pdata: null, xid: null, xray: null, f: 0, tab: 'finding',
   full: false, assist: false, menu: false, writing: false, busy: '', modal: null,
-  bright: 50, contrast: 50, zoom: 100, overlay: 1, chat: [], listening: false, speak: false
+  bright: 50, contrast: 50, zoom: 100, overlay: 1, heat: false, chat: [], listening: false, speak: false
 };
-const OVERLAY = ['OFF', 'LINES', 'AI MAP'];
+const OVERLAY = ['OFF', 'LINES'];
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -188,14 +189,19 @@ function handle(main, id, cx, cy, u, col) {
   return `<circle class="ov-dot ${col}" cx="${cx}" cy="${cy}" r="${(main ? 4.5 : 3.5) * u}"/>` +
     (main ? `<circle class="ov-grab" data-pt="${id}" cx="${cx}" cy="${cy}" r="${14 * u}"><title>Drag to adjust</title></circle>` : '');
 }
+// Where the AI looked for this finding (warm = more attention). Bunion angles have no map.
+function heatSvg(x, fd) {
+  const r = fd.r;
+  let out = '';
+  if (fd.key === 'flat_foot' && r.heatmap && r.heatmap.length && r.heatmap.some(row => row.some(v => v > 0))) out += `<image href="${heatImage(r.heatmap)}" x="0" y="0" width="${x.width}" height="${x.height}" preserveAspectRatio="none" style="mix-blend-mode:screen"/>`;
+  if (fd.key === 'heel_spur' && r.heatmap) { const b = r.crop_box; out += `<image href="${heatImage(r.heatmap)}" x="${b[0]}" y="${b[1]}" width="${b[2] - b[0]}" height="${b[3] - b[1]}" preserveAspectRatio="none" style="mix-blend-mode:screen"/>`; }
+  return out;
+}
+function hasHeat(fd) { return fd.key !== 'bunion' && heatSvg(S.xray, fd) !== ''; }
 function overlaySvg(x, fd, u, main) {
   if (!fd || S.overlay === 0) return '';
   const r = fd.r;
   let out = '';
-  if (S.overlay === 2) {
-    if (fd.key === 'flat_foot' && r.heatmap && r.heatmap.length) out += `<image href="${heatImage(r.heatmap)}" x="0" y="0" width="${x.width}" height="${x.height}" preserveAspectRatio="none" style="mix-blend-mode:screen"/>`;
-    if (fd.key === 'heel_spur' && r.heatmap) { const b = r.crop_box; out += `<image href="${heatImage(r.heatmap)}" x="${b[0]}" y="${b[1]}" width="${b[2] - b[0]}" height="${b[3] - b[1]}" preserveAspectRatio="none" style="mix-blend-mode:screen"/>`; }
-  }
   if (fd.key === 'flat_foot' && r.points && r.points.L10 && r.category !== 'Not measured') {
     const [x1, y1] = r.points.L10, [x2, y2] = r.points.L11;
     const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
@@ -226,12 +232,14 @@ function overlaySvg(x, fd, u, main) {
   return out;
 }
 function overlayAll(x, fd, u) {
-  if (!fd || S.overlay === 0) return '';
-  const others = findingList(x).filter(o => !(o.key === fd.key && o.i === fd.i));
-  const keep = S.overlay; S.overlay = 1;  // AI map only for the selected finding
+  if (!fd) return '';
+  // Heat map: the selected finding's, or the first other finding that has one (bunion angles have none).
+  const list = findingList(x), withHeat = hasHeat(fd) ? fd : list.find(hasHeat);
+  const heat = S.heat && withHeat ? heatSvg(x, withHeat) : '';
+  if (S.overlay === 0) return heat;
+  const others = list.filter(o => !(o.key === fd.key && o.i === fd.i));
   const rest = others.map(o => overlaySvg(x, o, u)).join('');
-  S.overlay = keep;
-  return `<g opacity="0.6">${rest}</g>${overlaySvg(x, fd, u, true)}`;
+  return `${heat}<g opacity="0.6">${rest}</g>${overlaySvg(x, fd, u, true)}`;
 }
 function xraySvg(x, fd) {
   const u = Math.max(x.width, x.height) / 900;
@@ -404,6 +412,7 @@ function patientScreen() {
       </div>
     </div>
     <div class="fabs">
+      <button class="fab heat${S.heat ? ' on' : ''}" data-act="heat" aria-label="Heat map" title="Heat map: where the AI looked">${ICON.heat}<span>Heat map</span></button>
       <button class="fab${S.full ? ' on' : ''}" data-act="full" aria-label="Full view" title="Full view">${ICON.expand}</button>
       <button class="fab${S.assist ? ' on' : ''}" data-act="assist" aria-label="Ask Remi" title="Ask Remi">${ICON.spark}</button>
     </div>
@@ -514,7 +523,7 @@ function answer(q) {
   if (/zoom out/.test(s)) { S.zoom = Math.max(50, S.zoom - 25); return 'Zoomed out.'; }
   if (/bright/.test(s)) { S.bright = Math.min(100, S.bright + 10); return 'Brighter.'; }
   if (/dark/.test(s)) { S.bright = Math.max(0, S.bright - 10); return 'Darker.'; }
-  if (/heat|map|focus/.test(s)) { S.overlay = 2; return 'Showing where the AI looked (the warm areas).'; }
+  if (/heat|map|focus/.test(s)) { S.heat = true; return 'Showing where the AI looked (the warm areas).'; }
   if (/hide.*line|lines off/.test(s)) { S.overlay = 0; return 'Lines hidden.'; }
   if (/line/.test(s)) { S.overlay = 1; return 'Lines shown.'; }
   if (/full|hide panel/.test(s)) { S.full = true; return 'Full view. Press the expand button to bring the panel back.'; }
@@ -574,6 +583,7 @@ async function doAct(act, el) {
     case 'prevF': { const n = findingList(x).length; S.f = (S.f - 1 + n) % n; break; }
     case 'pickF': S.f = +el.dataset.i; break;
     case 'nextF': { const n = findingList(x).length; S.f = (S.f + 1) % n; break; }
+    case 'heat': S.heat = !S.heat; if (S.heat && x && !findingList(x).some(hasHeat)) toast('No heat map for this X-ray. Bunion angles are measured from points, not a map.'); break;
     case 'full': S.full = !S.full; break;
     case 'assist': S.assist = !S.assist; break;
     case 'closeAssist': S.assist = false; if (recog) recog.stop(); S.listening = false; break;
@@ -629,7 +639,7 @@ document.addEventListener('click', (e) => {
     if (k === 'bright') S.bright = S.bright >= 90 ? 10 : S.bright + 10;
     if (k === 'contrast') S.contrast = S.contrast >= 90 ? 10 : S.contrast + 10;
     if (k === 'zoom') S.zoom = S.zoom >= 200 ? 100 : S.zoom + 25;
-    if (k === 'overlay') S.overlay = (S.overlay + 1) % 3;
+    if (k === 'overlay') S.overlay = S.overlay ? 0 : 1;
     return render();
   }
   doAct(d.act, t);
