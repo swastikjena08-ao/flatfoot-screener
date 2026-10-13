@@ -84,6 +84,16 @@ function prevResult(fd) {
 }
 function sevTag(sev, text) { return `<span class="tag ${sev === 'ok' ? 'green' : 'red'}">${esc(text)}</span>`; }
 
+// Bunion angles have no model probability, so confidence is the chance the grade stays the same given
+// the angle error measured in testing (HVA 85% and IMA 95.6% within 3°, i.e. about 2.1° and 1.5° spread).
+function bandChance(v, sd, cuts) {
+  const cdf = z => 1 / (1 + Math.exp(-1.702 * z));
+  const lo = [-Infinity, ...cuts].filter(c => c <= v).pop(), hi = [...cuts, Infinity].find(c => c > v);
+  return cdf((hi - v) / sd) - cdf((lo - v) / sd);
+}
+function bunionConfidence(hva, ima) {
+  return Math.round(bandChance(hva, 2.1, [15, 20, 40]) * bandChance(ima, 1.5, [9, 11, 16]) * 100);
+}
 function describe(fd, x) {
   const r = fd.r, prev = prevResult(fd);
   if (fd.key === 'flat_foot') {
@@ -94,7 +104,7 @@ function describe(fd, x) {
       title: cat === 'Not measured' ? 'Arch not measured' : cat,
       sub: `${r.left ? 'Left' : 'Right'} foot · arch height`,
       tags: (measured ? sevTag(r.severity, cat === 'Flat foot' ? 'Low arch' : cat === 'High arch' ? 'High arch' : 'Arch in normal range') : `<span class="tag">${r.tilt ? 'Foot not level' : 'Check the X-ray framing'}</span>`) + '<span class="tag">Side view</span>',
-      bar: { label: 'Flat foot likelihood', pct: Math.round(r.p_flat * 100), calm: r.p_flat < 0.5 },
+      bar: { label: measured ? `Confidence: ${cat.toLowerCase()}` : `Confidence: ${r.p_flat >= 0.5 ? 'looks flat' : 'does not look flat'}`, pct: Math.round((measured ? (cat === 'Flat foot' ? r.p_flat : 1 - r.p_flat) : Math.max(r.p_flat, 1 - r.p_flat)) * 100), calm: r.severity === 'ok' },
       score: SCORE.flat_foot,
       tiles: [
         { k: 'Heel bone angle', v: ang != null ? ang.toFixed(1) + '°' : '—', h: diff != null ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)}° since ${fmtDate(S.xray.previous.date)}` : measured ? 'Lower means flatter' : r.tilt ? 'Foot not standing level' : 'Could not measure reliably', red: diff != null && diff < 0 },
@@ -110,7 +120,7 @@ function describe(fd, x) {
     return {
       title: r.headline, sub: 'Heel · underside and back',
       tags: sevTag(r.severity, label === 'spur' ? 'Spur seen' : label === 'sever' ? "Child's heel irritation" : 'Heel looks clear') + '<span class="tag">Side view</span>',
-      bar: { label: 'Heel spur likelihood', pct: Math.round(p.spur * 100), calm: label !== 'spur' },
+      bar: { label: `Confidence: ${label === 'spur' ? 'spur seen' : label === 'sever' ? "Sever's" : 'heel clear'}`, pct: Math.round(p[label] * 100), calm: label === 'normal' },
       score: SCORE.heel_spur,
       tiles: [
         { k: 'Result', v: label === 'spur' ? 'Spur seen' : label === 'sever' ? "Sever's" : 'Not seen', sm: true, h: 'Marked on the X-ray' },
@@ -126,7 +136,7 @@ function describe(fd, x) {
   return {
     title: grade === 'No bunion' ? 'No bunion' : 'Bunion', sub: `${r.side === 'left' ? 'Left' : 'Right'} foot · big toe joint`,
     tags: sevTag(r.severity, grade) + '<span class="tag">Top-down view</span>',
-    bar: { label: 'Angle accuracy in testing (HVA within 3°)', pct: 85, calm: true },
+    bar: { label: `Confidence: ${grade.toLowerCase()}`, pct: bunionConfidence(r.hva, r.ima), calm: grade === 'No bunion' },
     score: SCORE.bunion,
     tiles: [
       { k: 'Big toe angle (HVA)', v: r.hva.toFixed(1) + '°', h: pHva != null ? `${r.hva - pHva > 0 ? '+' : ''}${(r.hva - pHva).toFixed(1)}° since ${fmtDate(S.xray.previous.date)}` : 'Normal is under 15°', red: r.hva >= 15 },
@@ -309,7 +319,8 @@ function findingPanel() {
   S.f = Math.min(S.f, list.length - 1);
   const fd = list[S.f], c = describe(fd, x), cmp = c.compare, pv = x.previous;
   const on = Math.round(c.bar.pct / 100 * 40);
-  return `
+  const all = list.length > 1 ? `<div class="f-list">${list.map((f, i) => { const d = describe(f, x); return `<button class="${i === S.f ? 'on' : ''}" data-act="pickF" data-i="${i}"><i class="sev ${f.r.category === 'Not measured' ? 'none' : f.r.severity || 'ok'}"></i>${esc(d.title)}</button>`; }).join('')}</div>` : '';
+  return `${all}
     <div class="card">
       <div class="f-title">${esc(c.title)}</div><div class="f-sub">${esc(c.sub)}</div>
       <div class="f-tags">${c.tags}${x.reviewed ? `<span class="tag green">${ICON.check}&nbsp;Reviewed</span>` : ''}</div>
@@ -553,6 +564,7 @@ async function doAct(act, el) {
     case 'editPatient': S.modal = { kind: 'patient', edit: true }; render(); return;
     case 'addXray': $('#fileIn').click(); return;
     case 'prevF': { const n = findingList(x).length; S.f = (S.f - 1 + n) % n; break; }
+    case 'pickF': S.f = +el.dataset.i; break;
     case 'nextF': { const n = findingList(x).length; S.f = (S.f + 1) % n; break; }
     case 'full': S.full = !S.full; break;
     case 'assist': S.assist = !S.assist; break;
