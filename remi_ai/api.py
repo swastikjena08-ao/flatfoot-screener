@@ -17,8 +17,10 @@ import threading
 import numpy as np
 from PIL import Image, ImageOps
 
-from . import report
-from .engine import CHECKS, VIEWS, Engine, adjust_points, findings
+import shutil
+
+from . import pdf_report, report
+from .engine import CHECKS, MODELS, VIEWS, Engine, adjust_points, findings
 from .store import DEFAULT_HISTORY, Store
 
 DISPLAY_MAX = 1800  # longest side of the copy sent to the window
@@ -74,9 +76,17 @@ class Api:
         if self._doctor is None:
             raise PermissionError("Please sign in first.")
 
+    def _need_doctor(self):
+        self._need_login()
+        if self._doctor.get("role") == "assistant":
+            raise PermissionError("Only a doctor can do this. Assistant accounts can prepare reports but not sign off.")
+
     def _open(self, path):
         if self._open_files:
-            open_path(path)
+            try:
+                open_path(path)
+            except OSError:  # no program to open it with: the file is still saved
+                pass
 
     def _xray_summary(self, x):
         return {"id": x["id"], "view": x["view"], "view_label": VIEWS.get(x["view"], x["view"]),
@@ -89,7 +99,7 @@ class Api:
     def app_info(self):
         return {"has_doctors": self._store.has_doctors(), "last_doctor_id": self._store.setting("last_doctor_id", ""),
                 "models": self._engine.status(), "model_errors": self._engine.errors,
-                "checks": CHECKS, "views": VIEWS, "history_items": DEFAULT_HISTORY,
+                "checks": CHECKS, "views": VIEWS, "model_info": MODELS, "history_items": DEFAULT_HISTORY,
                 "doctor": self._doctor, "data_dir": self._store.dir}
 
     @safe
@@ -111,6 +121,53 @@ class Api:
     def logout(self):
         self._doctor = None
         return {"ok": True}
+
+    # ---- account -------------------------------------------------------------------
+    @safe
+    def account(self):
+        self._need_login()
+        d = self._store.doctor(self._doctor["doctor_id"])
+        out = {"me": d, "assistants": [], "data_dir": self._store.dir}
+        if d["role"] == "doctor":
+            out["assistants"] = self._store.assistants(d["doctor_id"])
+        else:
+            out["supervisor"] = self._store.doctor(d["supervisor"]) if d["supervisor"] else None
+        return out
+
+    @safe
+    def update_account(self, name, clinic=""):
+        self._need_login()
+        self._store.update_account(self._doctor["doctor_id"], name, clinic)
+        self._doctor = self._store.doctor(self._doctor["doctor_id"])
+        return self._doctor
+
+    @safe
+    def change_password(self, old, new):
+        self._need_login()
+        if self._store.check_login(self._doctor["doctor_id"], old) is None:
+            raise ValueError("Your current password is not right.")
+        self._store.set_password(self._doctor["doctor_id"], new)
+        return {"ok": True}
+
+    @safe
+    def add_assistant(self, assistant_id, name, password):
+        self._need_doctor()
+        return self._store.add_doctor(assistant_id, name, password, self._doctor.get("clinic", ""),
+                                      role="assistant", supervisor=self._doctor["doctor_id"])
+
+    @safe
+    def remove_assistant(self, assistant_id):
+        self._need_doctor()
+        a = self._store.doctor(assistant_id)
+        if a is None or a["role"] != "assistant" or a["supervisor"] != self._doctor["doctor_id"]:
+            raise ValueError("That isn't one of your assistant accounts.")
+        self._store.delete_account(a["doctor_id"])
+        return {"ok": True}
+
+    @safe
+    def model_status(self):
+        """Every AI model: installed, passes a test run, how long it took, and its tested accuracy."""
+        return list(self._engine.health().values())
 
     # ---- patients --------------------------------------------------------------------
     @safe
@@ -276,11 +333,61 @@ class Api:
             visits.append(v)
         return p, self._store.history(patient_id), visits
 
+    def _visit_for_report(self, patient_id):
+        """The latest visit (the one being reported on) and the visits before it."""
+        visits = self._store.visits(patient_id)
+        if not visits:
+            raise ValueError("This patient has no visits yet.")
+        for v in visits:
+            v["xrays"] = self._store.xrays(v["id"])
+        return visits[0], visits[1:]
+
+    def _deliver(self, path):
+        """Keep the PDF in the patient's folder, put a copy in Downloads and open it."""
+        downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+        copy = None
+        if os.path.isdir(downloads):
+            copy = os.path.join(downloads, os.path.basename(path))
+            shutil.copy2(path, copy)
+        self._open(copy or path)
+        return {"path": path, "download": copy, "file": os.path.basename(path)}
+
     @safe
     def export_report(self, patient_id):
+        """PDF of the latest visit: signed if a doctor already signed it off, otherwise a draft."""
         self._need_login()
-        p, hist, visits = self._patient_bundle(patient_id)
-        path = report.write_report(self._store.patient_dir(patient_id), p, hist, visits, self._doctor)
+        p, hist = self._store.patient(patient_id), self._store.history(patient_id)
+        visit, earlier = self._visit_for_report(patient_id)
+        signer = self._store.doctor(visit["signed_by"]) if visit["signed_by"] else None
+        path = pdf_report.write_pdf(self._store.patient_dir(patient_id), p, hist, visit, visit["xrays"],
+                                    self._doctor, signer, earlier)
+        if not signer:
+            self._store.set_visit_report(visit["id"], os.path.basename(path))
+        return self._deliver(path)
+
+    @safe
+    def sign_off(self, patient_id):
+        """The doctor signs off the latest visit: a signed PDF report is saved in the patient's files."""
+        self._need_doctor()
+        p, hist = self._store.patient(patient_id), self._store.history(patient_id)
+        visit, earlier = self._visit_for_report(patient_id)
+        if visit["signed_by"]:
+            raise ValueError(f"This visit was already signed off by {visit['signed_by']}.")
+        for x in visit["xrays"]:  # signing off means the doctor has reviewed every X-ray in the visit
+            if not x["reviewed"]:
+                self._store.set_reviewed(x["id"], True)
+                x["reviewed"] = 1
+        path = pdf_report.write_pdf(self._store.patient_dir(patient_id), p, hist, visit, visit["xrays"],
+                                    self._doctor, self._doctor, earlier)
+        self._store.sign_off(visit["id"], self._doctor["doctor_id"], os.path.basename(path))
+        return self._deliver(path)
+
+    @safe
+    def open_report(self, patient_id, file):
+        self._need_login()
+        path = os.path.join(self._store.patient_dir(patient_id), os.path.basename(file))
+        if not os.path.exists(path):
+            raise ValueError("That report file is no longer in the patient's folder.")
         self._open(path)
         return {"path": path}
 

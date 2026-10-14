@@ -39,6 +39,18 @@ CHECKS = {
                "score": "Within 3° of doctors: HVA 85.0%, IMA 95.6% (160 feet)"},
 }
 
+# Every model in the app, for the account page's model list.
+MODELS = {
+    "view_check": {"name": "X-ray check", "what": "Says what kind of X-ray it is and routes it to the right checks",
+                   "view": "Any", "score": "99.1% correct; 83.1% on X-rays from a new hospital"},
+    "flat_foot": {"name": "Flat foot", "what": "Flat foot classifier plus heel bone (arch) angle",
+                  "view": "Side", "score": CHECKS["flat_foot"]["score"]},
+    "heel_spur": {"name": "Heel spur", "what": "Finds the heel, then normal / heel spur / Sever's",
+                  "view": "Side", "score": CHECKS["heel_spur"]["score"]},
+    "bunion": {"name": "Bunion angles", "what": "Big toe (HVA) and bone gap (IMA) angles from 6 points per foot",
+               "view": "Top-down", "score": CHECKS["bunion"]["score"]},
+}
+
 FLAT_BELOW = 17.7   # heel bone angle under this = flat foot (landmarks.json threshold)
 HIGH_ABOVE = 30.0   # over this = high arch
 
@@ -195,6 +207,35 @@ class Engine:
     def status(self):
         """{key: True/False} for every model, for the settings and assistant panels."""
         return {k: self.available(k) for k in ("view_check", *CHECKS)}
+
+    def health(self):
+        """Load every model and run it once on a test image, so the app can show which ones work."""
+        import time
+        test = Image.fromarray(np.tile(np.linspace(30, 220, 640, dtype=np.uint8), (480, 1)))
+        out = {}
+        for key, info in MODELS.items():
+            row = {**info, "key": key, "loaded": False, "ok": False, "ms": None, "problem": ""}
+            model = self._load(key)
+            if model is None:
+                row["problem"] = "Model files not installed" if "No such file" in self.errors.get(key, "") or \
+                    "not found" in self.errors.get(key, "").lower() else (self.errors.get(key) or "Could not load")
+                out[key] = row
+                continue
+            row["loaded"] = True
+            t = time.perf_counter()
+            try:
+                if key == "bunion":
+                    model.predict(np.asarray(test), boxes={"right": (0.0, 0.0, 640.0, 480.0)})
+                else:
+                    model.predict(test)
+                row["ok"] = True
+            except Exception as e:
+                row["problem"] = f"Test run failed ({type(e).__name__})"
+            row["ms"] = round((time.perf_counter() - t) * 1000)
+            out[key] = row
+        if "bunion" in out and out["bunion"]["ok"]:
+            out["bunion"]["finder"] = getattr(self._load("bunion"), "finder", None) is not None
+        return out
 
     # ---- X-ray type check ------------------------------------------------------------
     def detect_view(self, img):

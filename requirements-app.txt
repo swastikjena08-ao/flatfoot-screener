@@ -4,3 +4,4 @@ pillow
 onnxruntime
 opencv-python-headless
 pywebview>=5
+fpdf2>=2.7

@@ -89,7 +89,20 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(SCHEMA)
+        self._migrate()
         self.db.commit()
+
+    def _migrate(self):
+        """Add columns introduced after the first release to an existing database."""
+        def add(table, column, ddl):
+            cols = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            if column not in cols:
+                self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+        add("doctors", "role", "TEXT NOT NULL DEFAULT 'doctor'")      # doctor | assistant
+        add("doctors", "supervisor", "TEXT NOT NULL DEFAULT ''")      # an assistant's doctor
+        add("visits", "signed_by", "TEXT NOT NULL DEFAULT ''")
+        add("visits", "signed_at", "TEXT NOT NULL DEFAULT ''")
+        add("visits", "report", "TEXT NOT NULL DEFAULT ''")           # PDF file name in the patient folder
 
     # ---- settings ------------------------------------------------------------------
     def setting(self, key, default=None):
@@ -104,24 +117,25 @@ class Store:
     def has_doctors(self):
         return self.db.execute("SELECT 1 FROM doctors LIMIT 1").fetchone() is not None
 
-    def add_doctor(self, doctor_id, name, password, clinic=""):
+    def add_doctor(self, doctor_id, name, password, clinic="", role="doctor", supervisor=""):
         doctor_id = doctor_id.strip().upper()
         if not doctor_id or not name.strip():
-            raise ValueError("Doctor ID and name are required.")
+            raise ValueError("ID and name are required.")
         if len(password) < 6:
             raise ValueError("Password must be at least 6 characters.")
         if self.doctor(doctor_id):
-            raise ValueError(f"Doctor ID {doctor_id} already exists.")
+            raise ValueError(f"ID {doctor_id} already exists.")
         salt = secrets.token_bytes(16)
-        self.db.execute("INSERT INTO doctors VALUES (?, ?, ?, ?, ?, ?)",
+        self.db.execute("INSERT INTO doctors (doctor_id, name, clinic, salt, pw_hash, created, role, supervisor) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                         (doctor_id, name.strip(), clinic.strip(), salt, hash_password(password, salt),
-                         dt.datetime.now().isoformat(timespec="seconds")))
+                         dt.datetime.now().isoformat(timespec="seconds"), role, supervisor))
         self.db.commit()
         return self.doctor(doctor_id)
 
     def doctor(self, doctor_id):
-        r = self.db.execute("SELECT doctor_id, name, clinic FROM doctors WHERE doctor_id = ?",
-                            (doctor_id.strip().upper(),)).fetchone()
+        r = self.db.execute("SELECT doctor_id, name, clinic, role, supervisor, created FROM doctors "
+                            "WHERE doctor_id = ?", (doctor_id.strip().upper(),)).fetchone()
         return dict(r) if r else None
 
     def check_login(self, doctor_id, password):
@@ -130,6 +144,30 @@ class Store:
         if r is None or not hmac.compare_digest(hash_password(password, r["salt"]), r["pw_hash"]):
             return None
         return self.doctor(doctor_id)
+
+    def set_password(self, doctor_id, password):
+        if len(password) < 6:
+            raise ValueError("New password must be at least 6 characters.")
+        salt = secrets.token_bytes(16)
+        self.db.execute("UPDATE doctors SET salt = ?, pw_hash = ? WHERE doctor_id = ?",
+                        (salt, hash_password(password, salt), doctor_id))
+        self.db.commit()
+
+    def update_account(self, doctor_id, name, clinic):
+        if not name.strip():
+            raise ValueError("Name can't be empty.")
+        self.db.execute("UPDATE doctors SET name = ?, clinic = ? WHERE doctor_id = ?",
+                        (name.strip(), clinic.strip(), doctor_id))
+        self.db.commit()
+
+    def assistants(self, supervisor):
+        rows = self.db.execute("SELECT doctor_id, name, created FROM doctors WHERE role = 'assistant' "
+                               "AND supervisor = ? ORDER BY created", (supervisor,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_account(self, doctor_id):
+        self.db.execute("DELETE FROM doctors WHERE doctor_id = ?", (doctor_id,))
+        self.db.commit()
 
     # ---- patients ------------------------------------------------------------------
     def add_patient(self, patient_id, name, doctor_id, age=None, sex="", phone="", referred_by="",
@@ -199,8 +237,9 @@ class Store:
         return cur.lastrowid
 
     def todays_visit(self, patient_id, doctor_id):
-        r = self.db.execute("SELECT id FROM visits WHERE patient_id = ? AND date = ? ORDER BY id DESC",
-                            (patient_id, today())).fetchone()
+        # A signed-off visit is closed: anything added afterwards starts a new visit.
+        r = self.db.execute("SELECT id FROM visits WHERE patient_id = ? AND date = ? AND signed_by = '' "
+                            "ORDER BY id DESC", (patient_id, today())).fetchone()
         return r["id"] if r else self.add_visit(patient_id, doctor_id)
 
     def visits(self, patient_id):
@@ -211,6 +250,15 @@ class Store:
     def visit(self, visit_id):
         r = self.db.execute("SELECT * FROM visits WHERE id = ?", (visit_id,)).fetchone()
         return dict(r) if r else None
+
+    def sign_off(self, visit_id, doctor_id, report_file):
+        self.db.execute("UPDATE visits SET signed_by = ?, signed_at = ?, report = ? WHERE id = ?",
+                        (doctor_id, dt.datetime.now().isoformat(timespec="seconds"), report_file, visit_id))
+        self.db.commit()
+
+    def set_visit_report(self, visit_id, report_file):
+        self.db.execute("UPDATE visits SET report = ? WHERE id = ?", (report_file, visit_id))
+        self.db.commit()
 
     def set_visit_note(self, visit_id, note):
         self.db.execute("UPDATE visits SET note = ? WHERE id = ?", (note, visit_id))

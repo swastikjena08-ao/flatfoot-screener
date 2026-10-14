@@ -285,7 +285,7 @@ function listScreen() {
         <label class="search">${ICON.search}<input id="listSearch" placeholder="Search name or ID" value="${esc(S.q)}"></label>
         <button class="btn solid" data-act="newPatient">${ICON.plus}New patient</button>
         <button class="btn" data-act="assist">${ICON.spark}Ask Remi</button>
-        <button class="avatar" data-act="logout" title="${esc(S.doctor.name)} · click to sign out">${initials(S.doctor.name)}</button>
+        <button class="avatar" data-act="account" title="${esc(S.doctor.name)} · account">${initials(S.doctor.name)}</button>
       </div>
     </div>
     ${missing.length ? `<div class="card" style="margin-bottom:14px"><div class="skipnote">${ICON.info}<span>Some AI model files are missing on this computer: ${missing.map(k => esc((S.info.checks[k] || { name: 'X-ray check' }).name)).join(', ')}. Those checks will be skipped. ${missing.includes('view_check') ? 'Without the X-ray check you will be asked what kind of X-ray each upload is.' : ''}</span></div></div>` : ''}
@@ -362,6 +362,14 @@ function findingPanel() {
       <button class="btn solid" data-act="refer">Refer Patient</button>
     </div>`;
 }
+const isAssistant = () => S.doctor && S.doctor.role === 'assistant';
+function latestVisit() { return S.pdata && S.pdata.visits.length ? S.pdata.visits[0] : null; }
+function signButton() {
+  const v = latestVisit();
+  if (v && v.signed_by) return `<button class="btn solid signed" data-act="openSigned" title="Signed off by ${esc(v.signed_by)}. Click to open the signed report.">${ICON.check}Signed off</button>`;
+  if (isAssistant()) return `<button class="btn solid" disabled style="opacity:.45" title="Only a doctor can sign off. You can make the PDF report.">Sign off</button>`;
+  return `<button class="btn solid" data-act="signOff" ${v ? '' : 'disabled style="opacity:.5"'} title="Sign off this visit and save a signed PDF report">Sign off</button>`;
+}
 function recordPanel() {
   const p = S.pdata.patient, h = S.pdata.history;
   const histItems = Object.keys(h).length ? Object.entries(h).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') : '<dt>—</dt><dd style="color:var(--muted)">Nothing recorded yet</dd>';
@@ -374,7 +382,9 @@ function recordPanel() {
     <div class="card rec"><h4>Visits</h4><div class="timeline">
       ${S.pdata.visits.map(v => `<div class="tl"><span class="num">${fmtDate(v.date)}</span><div><b style="font-weight:500">${esc(v.label)}</b>
         ${v.xrays.map(x => `<p>${esc(x.view_label)}: ${x.findings.length ? x.findings.map(f => esc(f[0])).join(', ') : 'no checks ran'}</p>`).join('')}
-        ${v.note ? `<p style="white-space:pre-line">${esc(v.note)}</p>` : ''}${!v.xrays.length && !v.note ? '<p>No X-rays or notes</p>' : ''}</div></div>`).join('')}
+        ${v.note ? `<p style="white-space:pre-line">${esc(v.note)}</p>` : ''}${!v.xrays.length && !v.note ? '<p>No X-rays or notes</p>' : ''}
+        ${v.signed_by ? `<p class="signed-line">${ICON.check} Signed off by ${esc(v.signed_by)} · ${fmtDate(v.signed_at)}</p>` : ''}
+        ${v.report ? `<p><a href="#" data-act="openReport" data-file="${esc(v.report)}">${v.signed_by ? 'Signed report' : 'Draft report'} (PDF)</a></p>` : ''}</div></div>`).join('')}
     </div></div>
     <div class="actions"><button class="btn" data-act="openFolder">Open patient folder</button><button class="btn solid" data-act="editPatient">Edit details</button></div>`;
 }
@@ -397,10 +407,10 @@ function patientScreen() {
     ${x ? chips() : ''}
     <div class="side">
       <div class="toolbar">
-        <button class="btn" data-act="export">${ICON.export}Export</button>
-        <button class="btn solid" data-act="save" ${x && x.view !== 'unsure' ? '' : 'disabled style="opacity:.5"'}>${x && x.reviewed ? 'Saved' : 'Save'}</button>
-        <label class="search">${ICON.search}<input id="topSearch" placeholder="Search"></label>
-        <button class="avatar" data-act="logout" title="${esc(S.doctor.name)} · click to sign out">${initials(S.doctor.name)}</button>
+        <button class="btn" data-act="export" title="PDF report of the latest visit">${ICON.export}PDF report</button>
+        <button class="btn" data-act="save" ${x && x.view !== 'unsure' ? '' : 'disabled style="opacity:.5"'}>${x && x.reviewed ? 'Reviewed' : 'Mark reviewed'}</button>
+        ${signButton()}
+        <button class="avatar" data-act="account" title="${esc(S.doctor.name)} · account">${initials(S.doctor.name)}</button>
       </div>
       <div class="panel">
         <div class="panel-head">
@@ -452,6 +462,12 @@ function referForm() {
     <div class="actions"><button type="button" class="btn" data-act="closeModal">Cancel</button><button class="btn solid" type="submit">Write referral</button></div>
   </form></div>`;
 }
+function signOffForm() {
+  const v = latestVisit(), n = v ? v.xrays.length : 0;
+  return `<div class="modal-back"><div class="modal"><h3>Sign off ${esc(S.pdata.patient.name)}'s visit?</h3>
+    <p>You confirm you have reviewed ${n === 1 ? 'the X-ray' : `all ${n} X-rays`} from ${v ? fmtDate(v.date) : 'this visit'} and Remi's findings. A signed PDF report is saved in the patient's files and a copy in your Downloads folder. Anything added later starts a new visit.</p>
+    <div class="actions"><button class="btn" data-act="closeModal">Cancel</button><button class="btn solid" data-act="confirmSignOff">Sign off</button></div></div></div>`;
+}
 function confirmForm(text, act) {
   return `<div class="modal-back"><div class="modal"><h3>${esc(text)}</h3><p>This removes the X-ray file and its results from the patient's record.</p>
     <div class="actions"><button class="btn" data-act="closeModal">Cancel</button><button class="btn solid" data-act="${act}">Delete</button></div></div></div>`;
@@ -481,8 +497,8 @@ function nextStep() {
     if (!x) return 'Add an X-ray for this patient: press Add X-ray or drop the file on the left.';
     if (x.view === 'unsure') return 'Tell me what kind of X-ray this is using the three buttons on the right, so I run the right checks.';
     if (!findingList(x).length) return 'No checks ran on this X-ray. Add a side or top-down foot X-ray, or change the X-ray type from the menu.';
-    if (!x.reviewed) return 'Look at the lines on the X-ray and the numbers on the right. If you agree, press Save to mark it reviewed. Then add a note or refer the patient if needed.';
-    return 'This X-ray is reviewed. You can add a note, refer the patient, or press Export for a report.';
+    if (!x.reviewed) return 'Look at the lines on the X-ray and the numbers on the right. If you agree, press Mark reviewed. When the visit is done, a doctor presses Sign off to save the signed PDF report.';
+    return latestVisit() && latestVisit().signed_by ? 'This visit is signed off and the PDF report is in the patient\'s files. Anything new you add starts a new visit.' : isAssistant() ? 'This X-ray is reviewed. Press PDF report to prepare the report; the doctor signs it off.' : 'This X-ray is reviewed. Add a note or referral if needed, then press Sign off to save the signed PDF report.';
   }
   return '';
 }
@@ -494,11 +510,111 @@ function explainFinding() {
   if (fd.key === 'heel_spur') return `Remi finds the heel bone, then looks for a bony spur under or behind it. Here it says: ${r.headline.toLowerCase()} (${Math.round(r.probs[r.label] * 100)}% likely). The circle on the X-ray marks the heel area it checked.`;
   return `HVA is how far the big toe leans towards the other toes (normal under 15°). IMA is the gap angle between the 1st and 2nd foot bones (normal under 9°). This foot has HVA ${r.hva.toFixed(1)}° and IMA ${r.ima.toFixed(1)}°, so: ${r.grade.toLowerCase()}.`;
 }
+/* Adding patients by voice or text: "add a patient named Amir, 34, male, heel pain for 2 months".
+   Remi creates the record as soon as it has a name, then asks for anything still missing. */
+const HIST_KEYS = [[/diabet|sugar/i, 'Diabetes'], [/\bbp\b|blood pressure|hypertension/i, 'Blood pressure'],
+  [/medicin|medication|tablet|drugs?\b/i, 'Medicines'], [/surgery|operat/i, 'Past foot surgery'], [/allerg/i, 'Allergies']];
+const capFirst = t => t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+const titleCase = t => t.split(/\s+/).map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(' ');
+const STOP = String.raw`(?=,|\.|;|\s+aged?\b|\s+who\b|\s+with\b|\s+(?:fe)?male\b|\s+phone\b|\s+mobile\b|\s+complain|\s+\d|\s+and\b|\s+age\b|\s+is\s+\d|\s*$)`;
+function parseDetails(text) {
+  const d = { history: {} }, t = ' ' + text.replace(/\s+/g, ' ').trim() + ' ';
+  let m;
+  if ((m = t.match(new RegExp(String.raw`\b(?:named|called|name is|name)\s+([a-z][a-z.'-]*(?:\s+(?!and\b|aged?\b|who\b|with\b|male\b|female\b|phone\b|age\b|is\b)[a-z][a-z.'-]*){0,3}?)` + STOP, 'i')))) d.name = titleCase(m[1].trim());
+  if ((m = t.match(/\b(?:aged?|age is|age:)\s*(\d{1,3})\b/i) || t.match(/\b(\d{1,3})\s*(?:years?|yrs?|y\/o|yo)\b/i) || t.match(/(?:^|,)\s*(\d{1,3})\s*(?:,|$)/))) d.age = m[1];
+  if (/\b(female|woman|girl|lady)\b/i.test(t)) d.sex = 'Female'; else if (/\b(male|man|boy|gentleman)\b/i.test(t)) d.sex = 'Male';
+  if ((m = t.match(/\b(?:phone|mobile|number|contact)(?:\s+(?:number|no\.?))?(?:\s+is)?\s*[:-]?\s*(\+?\d[\d\s-]{5,}\d)/i))) d.phone = m[1].replace(/\s+/g, ' ').trim();
+  if ((m = t.match(/\breferred by\s+([^,.;]+)/i))) d.referred_by = m[1].trim();
+  if ((m = t.match(/\b(?:complaint(?: is)?|complains? of|complaining of|came (?:in )?(?:with|for)|problem is|suffering from|presenting with|has)\s*[:-]?\s*([^,.;]+)/i)) && !HIST_KEYS.some(([re]) => re.test(m[1]))) d.complaint = capFirst(m[1].trim());
+  else if ((m = t.match(/\b((?:heel|foot|ankle|arch|toe|big toe|knee)\s+(?:pain|swelling|ache|problem|injury)[^,.;]*)/i))) d.complaint = capFirst(m[1].trim());
+  text.split(/[,.;]|\band\b/i).forEach(seg => {
+    for (const [re, item] of HIST_KEYS) {
+      if (!re.test(seg)) continue;
+      if (/\b(no|none|nil|not|negative)\b/i.test(seg)) { d.history[item] = 'No'; continue; }
+      const rest = seg.replace(new RegExp('(?:' + re.source + String.raw`)\w*`, 'i'), '').replace(/^[\s\w]*?\b(is|are|:|-)\s*/i, '').replace(/^\s*(yes|has|have|on|takes?)\s*/i, '').trim();
+      d.history[item] = rest ? capFirst(rest.replace(/^(mellitus|pressure)\s*/i, '')) || 'Yes' : 'Yes';
+    }
+  });
+  return d;
+}
+const INTAKE = [
+  ['name', d => "What is the patient's full name?"],
+  ['age', d => `How old is ${d.first}?`],
+  ['sex', d => 'Female, male or other?'],
+  ['phone', d => 'Phone number? Say skip if you don\'t have it.'],
+  ['complaint', d => `What did ${d.first} come in with? For example, heel pain for three months.`],
+  ['history', d => 'Any medical history: diabetes, blood pressure, medicines, past foot surgery or allergies? Say none if not.'],
+];
+function intakeNext() {
+  const it = S.intake, p = it.pid && S.pdata && S.pdata.patient;
+  const have = { name: p ? p.name : it.data.name, age: p ? p.age : it.data.age, sex: p ? p.sex : it.data.sex, phone: p ? p.phone : it.data.phone,
+    complaint: p ? p.complaint : it.data.complaint, history: p ? Object.keys(S.pdata.history).length : 0 };
+  const step = INTAKE.find(([k]) => !have[k] && !it.skipped.includes(k));
+  if (!step) { const n = (p && p.name) || it.data.name; S.intake = null; return `All done. ${n}'s record is saved. Add their first X-ray when you're ready: say "add X-ray".`; }
+  it.step = step[0];
+  return step[1]({ first: ((p && p.name) || it.data.name || 'the patient').split(' ')[0] });
+}
+async function savePatientDetails(d) {
+  const fields = {};
+  ['name', 'age', 'sex', 'phone', 'referred_by', 'complaint'].forEach(k => { if (d[k]) fields[k] = d[k]; });
+  if (Object.keys(d.history || {}).length) fields.history = { ...S.pdata.history, ...d.history };
+  if (!Object.keys(fields).length) return false;
+  await call('update_patient', S.pid, fields); S.pdata = await call('get_patient', S.pid);
+  return Object.keys(fields).map(k => k === 'history' ? Object.keys(d.history).join(', ').toLowerCase() : k.replace('_', ' ')).join(', ');
+}
+async function createPatient(d) {
+  const id = await call('next_patient_id');
+  const p = await call('add_patient', { patient_id: id, name: d.name, age: d.age || '', sex: d.sex || '', phone: d.phone || '', referred_by: d.referred_by || '', complaint: d.complaint || '', history: d.history || {} });
+  await openPatient(p.patient_id); S.assist = true;
+  return p;
+}
+async function intakeAnswer(q) {
+  const it = S.intake, s = q.toLowerCase().trim();
+  if (/^(cancel|stop|quit|never ?mind)\b/.test(s)) { S.intake = null; return it.pid ? 'Stopped. Everything you gave me so far is saved.' : 'Cancelled. No patient was added.'; }
+  if (/^(skip|don'?t know|no idea|not now|later|pass)\b/.test(s) && it.step !== 'history') { it.skipped.push(it.step); return intakeNext(); }
+  const d = parseDetails(q);
+  if (it.step === 'name' && !d.name) d.name = titleCase(q.replace(/^(it'?s|the name is|name is|his name is|her name is)\s+/i, '').replace(/[.,!]+$/, '').trim());
+  if (it.step === 'age' && !d.age) { const m = q.match(/\d{1,3}/); if (m) d.age = m[0]; else return 'Please say the age as a number, or say skip.'; }
+  if (it.step === 'sex' && !d.sex) { if (/other|prefer not/i.test(q)) d.sex = 'Other'; else return 'Female, male or other? You can also say skip.'; }
+  if (it.step === 'phone' && !d.phone) { const m = q.match(/\+?\d[\d\s-]{5,}\d/); if (m) d.phone = m[0]; else return 'Please say the phone number digits, or say skip.'; }
+  if (it.step === 'complaint' && !d.complaint) d.complaint = capFirst(q.replace(/[.]+$/, '').trim());
+  if (it.step === 'history' && !Object.keys(d.history).length) {
+    if (/^(none|no|nothing|nil|no history)\b/i.test(s)) { it.skipped.push('history'); return intakeNext(); }
+    d.history = { 'Other history': capFirst(q.trim()) };
+  }
+  if (!it.pid) {
+    if (!d.name) return "I didn't catch a name. What is the patient's full name?";
+    const p = await createPatient(d); it.pid = p.patient_id;
+    const n = intakeNext();
+    return `Added ${p.name} as patient ${p.patient_id}. ` + n;
+  }
+  await savePatientDetails(d);
+  return 'Saved. ' + intakeNext();
+}
+async function patientCommand(q, s) {
+  // "add a patient named Amir ..." creates the record straight away; "add a patient" starts a short interview.
+  if (/\b(form)\b/.test(s)) { openNewPatient(); return 'Opened the new patient form.'; }
+  const d = parseDetails(q);
+  if (!d.name) { S.intake = { step: 'name', data: {}, skipped: [] }; return "Let's add a new patient. " + intakeNext(); }
+  const p = await createPatient(d);
+  S.intake = { pid: p.patient_id, data: {}, skipped: [] };
+  const got = ['age', 'sex', 'phone', 'complaint'].filter(k => d[k]).concat(Object.keys(d.history).length ? ['history'] : []);
+  return `Added ${p.name} as patient ${p.patient_id}${got.length ? ` with ${got.join(', ')}` : ''}. ` + intakeNext();
+}
 function answer(q) {
   const s = q.toLowerCase().trim();
   const onPatient = S.screen === 'patient';
   let m;
-  if (/(new|add|create).*patient/.test(s)) { openNewPatient(); return 'Opened the new patient form. Fill in the ID and name; the medical history can be added later.'; }
+  if (S.intake) return intakeAnswer(q);
+  if (/\b(new|add|create|register|make)\b.*\bpatient\b/.test(s)) return patientCommand(q, s);
+  if (onPatient && (/\b(add|update|change|set|fill)\b.*\b(details?|info|history|age|phone|complaint|sex|gender)\b/.test(s) || /^(age|phone|mobile|complaint|diabetes|blood pressure|bp|medicines?|allerg|sex|gender)\b/.test(s))) {
+    return (async () => {
+      const got = await savePatientDetails(parseDetails(q));
+      if (got) return `Updated ${S.pdata.patient.name}'s ${got}.`;
+      S.intake = { pid: S.pid, data: {}, skipped: [] };
+      return intakeNext();
+    })();
+  }
   if ((m = s.match(/^(open|show|find)\s+(patient\s+)?(.+)$/)) && !/(record|history|side|top|finding|folder|report)/.test(s)) {
     const term = m[3].trim(); const p = S.patients.find(p => p.name.toLowerCase().includes(term) || p.patient_id.toLowerCase() === term);
     if (p) { openPatient(p.patient_id); return `Opening ${p.name}.`; }
@@ -516,8 +632,9 @@ function answer(q) {
   if (/record|history/.test(s)) { S.tab = 'record'; return 'The record is open on the right: complaint, medical history and every visit.'; }
   if (/finding/.test(s)) { S.tab = 'finding'; return 'Showing the findings.'; }
   if ((m = q.match(/^\s*note[:,]?\s+(.+)/i))) { guard(async () => { await call('add_note', S.pid, m[1]); await reloadPatient(); }); return 'Saved that note to today\'s visit.'; }
+  if (/sign(ed)?[ -]?off/.test(s)) { if (isAssistant()) return 'Only a doctor can sign off. You can prepare the PDF report: say "make the report".'; doAct('signOff'); return 'Check the summary and press Sign off to confirm.'; }
   if (/save|review/.test(s)) { doAct('save'); return 'Marked this X-ray as reviewed.'; }
-  if (/export|report/.test(s)) { doAct('export'); return 'Writing the report. It opens in your browser, where you can print it or save it as PDF.'; }
+  if (/export|report|pdf/.test(s)) { doAct('export'); return 'Making the PDF report. It is saved in the patient\'s files and your Downloads folder, and opens when ready.'; }
   if (/refer/.test(s)) { doAct('refer'); return 'Opened the referral form.'; }
   if (/zoom in/.test(s)) { S.zoom = Math.min(200, S.zoom + 25); return 'Zoomed in.'; }
   if (/zoom out/.test(s)) { S.zoom = Math.max(50, S.zoom - 25); return 'Zoomed out.'; }
@@ -527,13 +644,17 @@ function answer(q) {
   if (/hide.*line|lines off/.test(s)) { S.overlay = 0; return 'Lines hidden.'; }
   if (/line/.test(s)) { S.overlay = 1; return 'Lines shown.'; }
   if (/full|hide panel/.test(s)) { S.full = true; return 'Full view. Press the expand button to bring the panel back.'; }
-  return 'I can: explain this finding, say why a check was skipped, open the side or top view, add a note (say "note: ..."), save, export a report, refer the patient, zoom, or show where the AI looked.';
+  return 'I can: add a patient (say "add a patient named ..."), fill in details ("age 34, phone ..."), explain this finding, say why a check was skipped, open the side or top view, add a note (say "note: ..."), save, export a report, refer the patient, zoom, or show where the AI looked.';
 }
-function say(text) {
-  S.chat.push({ me: true, t: text });
-  const a = answer(text);
+async function say(text, byVoice) {
+  S.chat.push({ me: true, t: text }); render();
+  let a;
+  try { a = await answer(text); } catch (e) { a = e.message || 'Something went wrong.'; }
   S.chat.push({ me: false, t: a });
-  if (S.speak && window.speechSynthesis) { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(a)); }
+  // During a voice interview, listen again once the question has been asked.
+  const listenAgain = () => { if (byVoice && S.intake && !S.listening) toggleMic(); };
+  if (S.speak && window.speechSynthesis) { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(a); u.onend = listenAgain; speechSynthesis.speak(u); }
+  else setTimeout(listenAgain, 300);
   render();
   const i = $('#chatIn'); if (i) i.focus();
 }
@@ -541,7 +662,7 @@ function toggleMic() {
   if (!SR) { toast('Voice input is not available on this computer. Type your question instead.'); return; }
   if (S.listening && recog) { recog.stop(); return; }
   recog = new SR(); recog.lang = 'en-IN'; recog.interimResults = false;
-  recog.onresult = (e) => { S.listening = false; say(e.results[0][0].transcript); };
+  recog.onresult = (e) => { S.listening = false; say(e.results[0][0].transcript, true); };
   recog.onerror = () => { S.listening = false; render(); toast('I could not hear that. Try again or type it.'); };
   recog.onend = () => { if (S.listening) { S.listening = false; render(); } };
   S.listening = true; render(); recog.start();
@@ -600,7 +721,15 @@ async function doAct(act, el) {
     case 'saveNote': { const t = ($('#noteBox').value || '').trim(); S.writing = false; if (t) await guard(async () => { await call('add_note', S.pid, t); await reloadPatient(); toast("Note saved to today's visit"); }); render(); return; }
     case 'refer': S.modal = { kind: 'refer' }; render(); $('#r_to').focus(); return;
     case 'save': if (!x || x.view === 'unsure') return; await guard(async () => { await call('mark_reviewed', x.id, true); x.reviewed = true; await reloadPatient(); toast('Marked as reviewed and saved'); }); return;
-    case 'export': await guard(async () => { const r = await call('export_report', S.pid); toast('Report saved in the patient folder and opened'); return r; }); return;
+    case 'export': S.busy = 'Making the PDF report…'; render(); await guard(async () => { const r = await call('export_report', S.pid); S.busy = ''; await reloadPatient(); toast(`PDF saved in the patient's files${r.download ? ' and Downloads' : ''}`); }); S.busy = ''; render(); return;
+    case 'signOff': S.modal = { kind: 'signoff' }; break;
+    case 'confirmSignOff': S.modal = null; S.busy = 'Signing off and writing the PDF report…'; render(); await guard(async () => { const r = await call('sign_off', S.pid); S.busy = ''; await reloadPatient(); if (S.xid) S.xray = await call('get_xray', S.xid); toast(`Signed off. PDF saved in the patient's files${r.download ? ' and Downloads' : ''}`); }); S.busy = ''; render(); return;
+    case 'openSigned': { const v = latestVisit(); if (v && v.report) await guard(() => call('open_report', S.pid, v.report)); return; }
+    case 'openReport': await guard(() => call('open_report', S.pid, el.dataset.file)); return;
+    case 'account': await openAccount(); return;
+    case 'closeAccount': S.screen = S.prevScreen || 'list'; if (S.screen === 'list') return goList(); break;
+    case 'recheckModels': S.models = null; render(); await guard(async () => { S.models = await call('model_status'); }); break;
+    case 'removeAssistant': await guard(async () => { await call('remove_assistant', el.dataset.id); S.acct = await call('account'); toast('Assistant account removed'); }); break;
     case 'openFolder': await guard(() => call('open_patient_folder', S.pid)); return;
     default: return;
   }
@@ -608,16 +737,72 @@ async function doAct(act, el) {
 }
 
 /* ---------- render + events ---------- */
+async function openAccount() {
+  await guard(async () => {
+    if (S.screen !== 'account') S.prevScreen = S.screen;
+    S.acct = await call('account'); S.screen = 'account'; S.models = null; S.assist = false; render();
+    S.models = await call('model_status'); if (S.screen === 'account') render();
+  });
+}
+function accountScreen() {
+  const a = S.acct, me = a.me, doc = me.role === 'doctor';
+  const models = S.models;
+  const modelRows = !models ? '<div class="empty-note">Checking every model…</div>' : models.map(m => `
+    <div class="model-row">
+      <span class="status ${m.ok ? 'ok' : m.loaded ? 'warn' : 'bad'}"></span>
+      <div><b>${esc(m.name)}</b><span>${esc(m.what)}</span></div>
+      <div class="m-view">${esc(m.view)}</div>
+      <div class="m-score">${esc(m.score)}</div>
+      <div class="m-state">${m.ok ? `Working · ${m.ms} ms` : esc(m.problem || 'Not working')}${m.key === 'bunion' && m.ok ? `<span>${m.finder ? 'Foot finder on' : 'Foot finder not installed'}</span>` : ''}</div>
+    </div>`).join('');
+  const okCount = models ? models.filter(m => m.ok).length : 0;
+  return `<div class="list account">
+    <div class="list-head">
+      <div><div class="brand"><span class="logo"><img src="img/remi_mark.png" alt=""></span><b>Remi</b><span>AI</span></div><div class="eyebrow">${doc ? 'Doctor account' : 'Assistant account'}</div><h2>Account</h2></div>
+      <div class="list-tools"><button class="btn" data-act="closeAccount">${ICON.left}Back</button><button class="btn solid" data-act="logout">Sign out</button></div>
+    </div>
+    <div class="acct-grid">
+      <form class="card acct" id="acctForm"><h4>Your details</h4>
+        <dl class="kv"><dt>${doc ? 'Doctor ID' : 'Assistant ID'}</dt><dd class="num">${esc(me.doctor_id)}</dd><dt>Role</dt><dd>${doc ? 'Doctor · can sign off' : 'Assistant · can make reports, not sign off'}</dd>
+        ${!doc && a.supervisor ? `<dt>Works with</dt><dd>${esc(a.supervisor.name)} (${esc(a.supervisor.doctor_id)})</dd>` : ''}<dt>Since</dt><dd class="num">${fmtDate(me.created)}</dd></dl>
+        <div class="field"><label for="a_name">Name</label><input id="a_name" value="${esc(me.name)}" required></div>
+        <div class="field"><label for="a_clinic">Clinic</label><input id="a_clinic" value="${esc(me.clinic)}"></div>
+        <div class="err" id="acctErr"></div><div class="actions"><button class="btn solid" type="submit">Save details</button></div>
+      </form>
+      <form class="card acct" id="pwForm"><h4>Change password</h4>
+        <div class="field"><label for="pw_old">Current password</label><input id="pw_old" type="password" autocomplete="current-password" required></div>
+        <div class="field"><label for="pw_new">New password</label><input id="pw_new" type="password" autocomplete="new-password" placeholder="At least 6 characters" required></div>
+        <div class="field"><label for="pw_new2">New password again</label><input id="pw_new2" type="password" autocomplete="new-password" required></div>
+        <div class="err" id="pwErr"></div><div class="actions"><button class="btn solid" type="submit">Change password</button></div>
+      </form>
+      ${doc ? `<form class="card acct" id="asstForm"><h4>Assistant logins</h4>
+        <p class="empty-note" style="margin:0">Assistants sign in with their own ID. They can add patients, X-rays and make the PDF report, but only you can sign off.</p>
+        ${a.assistants.length ? `<div class="asst-list">${a.assistants.map(x => `<div><b>${esc(x.name)}</b><span class="num">${esc(x.doctor_id)}</span><button type="button" class="btn" data-act="removeAssistant" data-id="${esc(x.doctor_id)}">Remove</button></div>`).join('')}</div>` : ''}
+        <div class="form-grid"><div class="field"><label for="as_id">Assistant ID</label><input id="as_id" placeholder="e.g. AS-01" required></div>
+        <div class="field"><label for="as_name">Name</label><input id="as_name" required></div>
+        <div class="field wide"><label for="as_pw">Password</label><input id="as_pw" type="password" autocomplete="new-password" placeholder="At least 6 characters" required></div></div>
+        <div class="err" id="asErr"></div><div class="actions"><button class="btn solid" type="submit">Add assistant</button></div>
+      </form>` : ''}
+    </div>
+    <div class="card models-card">
+      <div class="models-head"><div><h4>AI models in Remi</h4><span>${models ? `${okCount} of ${models.length} working. Each one is test-run on this computer when you open this page.` : 'Test-running each model on this computer…'}</span></div>
+        <button class="btn" data-act="recheckModels">Check again</button></div>
+      <div class="model-row head"><span></span><div>Model</div><div class="m-view">X-ray view</div><div class="m-score">Accuracy in testing</div><div class="m-state">Status now</div></div>
+      ${modelRows}
+    </div>
+    <p class="empty-note">Data folder: <span class="num">${esc(a.data_dir)}</span></p>
+  </div>`;
+}
 function render() {
   const el = $('#screen');
   if (S.screen === 'loading') { el.innerHTML = '<div class="login"><div class="spinner"></div></div>'; return; }
   el.className = 'screen' + (S.screen === 'patient' ? ' patient-screen' : '');
   const chatScroll = $('#msgs') ? $('#msgs').scrollTop : null;
-  el.innerHTML = { login: loginScreen, list: listScreen, patient: patientScreen }[S.screen]();
+  el.innerHTML = { login: loginScreen, list: listScreen, patient: patientScreen, account: accountScreen }[S.screen]();
   if (S.modal) {
     const m = document.createElement('div');
     m.innerHTML = S.modal.kind === 'patient' ? patientForm(S.modal.edit ? S.pdata.patient : null, S.modal.edit ? S.pdata.history : null)
-      : S.modal.kind === 'refer' ? referForm() : confirmForm('Delete this X-ray?', 'confirmDelete');
+      : S.modal.kind === 'refer' ? referForm() : S.modal.kind === 'signoff' ? signOffForm() : confirmForm('Delete this X-ray?', 'confirmDelete');
     el.appendChild(m.firstElementChild);
   }
   const msgs = $('#msgs'); if (msgs) msgs.scrollTop = chatScroll === null ? msgs.scrollHeight : msgs.scrollHeight;
@@ -667,6 +852,19 @@ document.addEventListener('submit', async (e) => {
     const to = $('#r_to').value, reason = $('#r_reason').value;
     S.modal = null; render();
     await guard(async () => { await call('refer_patient', S.pid, to, reason); await reloadPatient(); toast('Referral letter written and opened'); });
+  }
+  if (id === 'acctForm') {
+    try { S.doctor = await call('update_account', $('#a_name').value, $('#a_clinic').value); S.acct = await call('account'); render(); toast('Details saved'); }
+    catch (x) { $('#acctErr').textContent = x.message; }
+  }
+  if (id === 'pwForm') {
+    if ($('#pw_new').value !== $('#pw_new2').value) { $('#pwErr').textContent = "The two new passwords don't match."; return; }
+    try { await call('change_password', $('#pw_old').value, $('#pw_new').value); render(); toast('Password changed'); }
+    catch (x) { $('#pwErr').textContent = x.message; }
+  }
+  if (id === 'asstForm') {
+    try { const a = await call('add_assistant', $('#as_id').value, $('#as_name').value, $('#as_pw').value); S.acct = await call('account'); render(); toast(`${a.name} can now sign in with ID ${a.doctor_id}`); }
+    catch (x) { $('#asErr').textContent = x.message; }
   }
   if (id === 'chatForm') { const v = $('#chatIn').value.trim(); if (v) say(v); }
 });
