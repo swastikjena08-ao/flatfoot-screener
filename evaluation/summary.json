@@ -1,0 +1,465 @@
+{
+ "images_run": {
+  "routing": 12131,
+  "flat_foot": 540,
+  "heel_spur": 3956,
+  "bunion": 1392
+ },
+ "errors": {
+  "routing": 0,
+  "flat_foot": 0,
+  "heel_spur": 0,
+  "bunion": 0
+ },
+ "routing": {
+  "learned_from": {
+   "n": 8025,
+   "right": 99.0,
+   "asked_doctor": 0.6,
+   "wrong": 0.4,
+   "wrong_check_ran": 0.2,
+   "wrong_check_ran_n": 17,
+   "per_view": {
+    "side": {
+     "n": 3340,
+     "right": 99.3,
+     "asked_doctor": 0.5,
+     "wrong": 0.1,
+     "mistaken_for": {
+      "unsure": 17,
+      "not_foot": 3,
+      "top_down": 1,
+      "oblique": 1
+     }
+    },
+    "top_down": {
+     "n": 1242,
+     "right": 98.7,
+     "asked_doctor": 0.7,
+     "wrong": 0.6,
+     "mistaken_for": {
+      "unsure": 9,
+      "oblique": 7
+     }
+    },
+    "oblique": {
+     "n": 158,
+     "right": 99.4,
+     "asked_doctor": 0.6,
+     "wrong": 0.0,
+     "mistaken_for": {
+      "unsure": 1
+     }
+    },
+    "not_foot": {
+     "n": 3285,
+     "right": 98.8,
+     "asked_doctor": 0.7,
+     "wrong": 0.5,
+     "mistaken_for": {
+      "unsure": 23,
+      "side": 9,
+      "top_down": 7,
+      "oblique": 1
+     }
+    }
+   }
+  },
+  "tuning": {
+   "n": 1675,
+   "right": 98.6,
+   "asked_doctor": 1.0,
+   "wrong": 0.5,
+   "wrong_check_ran": 0.3,
+   "wrong_check_ran_n": 5,
+   "per_view": {
+    "side": {
+     "n": 690,
+     "right": 98.7,
+     "asked_doctor": 1.2,
+     "wrong": 0.1,
+     "mistaken_for": {
+      "unsure": 8,
+      "not_foot": 1
+     }
+    },
+    "top_down": {
+     "n": 275,
+     "right": 98.9,
+     "asked_doctor": 0.4,
+     "wrong": 0.7,
+     "mistaken_for": {
+      "oblique": 2,
+      "unsure": 1
+     }
+    },
+    "oblique": {
+     "n": 33,
+     "right": 97.0,
+     "asked_doctor": 3.0,
+     "wrong": 0.0,
+     "mistaken_for": {
+      "unsure": 1
+     }
+    },
+    "not_foot": {
+     "n": 677,
+     "right": 98.4,
+     "asked_doctor": 0.9,
+     "wrong": 0.7,
+     "mistaken_for": {
+      "unsure": 6,
+      "side": 3,
+      "top_down": 2
+     }
+    }
+   }
+  },
+  "never_seen": {
+   "n": 1738,
+   "right": 98.7,
+   "asked_doctor": 0.5,
+   "wrong": 0.8,
+   "wrong_check_ran": 0.5,
+   "wrong_check_ran_n": 8,
+   "per_view": {
+    "side": {
+     "n": 698,
+     "right": 99.3,
+     "asked_doctor": 0.3,
+     "wrong": 0.4,
+     "mistaken_for": {
+      "oblique": 3,
+      "unsure": 2
+     }
+    },
+    "top_down": {
+     "n": 279,
+     "right": 98.2,
+     "asked_doctor": 0.7,
+     "wrong": 1.1,
+     "mistaken_for": {
+      "unsure": 2,
+      "oblique": 2,
+      "not_foot": 1
+     }
+    },
+    "oblique": {
+     "n": 41,
+     "right": 90.2,
+     "asked_doctor": 4.9,
+     "wrong": 4.9,
+     "mistaken_for": {
+      "top_down": 2,
+      "unsure": 2
+     }
+    },
+    "not_foot": {
+     "n": 720,
+     "right": 98.9,
+     "asked_doctor": 0.3,
+     "wrong": 0.8,
+     "mistaken_for": {
+      "side": 5,
+      "unsure": 2,
+      "top_down": 1
+     }
+    }
+   }
+  },
+  "new_hospital": {
+   "n": 693,
+   "right": 97.1,
+   "asked_doctor": 2.0,
+   "wrong": 0.9,
+   "wrong_check_ran": 0.0,
+   "wrong_check_ran_n": 0,
+   "per_view": {
+    "side": {
+     "n": 21,
+     "right": 57.1,
+     "asked_doctor": 28.6,
+     "wrong": 14.3,
+     "mistaken_for": {
+      "unsure": 6,
+      "oblique": 3
+     }
+    },
+    "top_down": {
+     "n": 11,
+     "right": 81.8,
+     "asked_doctor": 0.0,
+     "wrong": 18.2,
+     "mistaken_for": {
+      "not_foot": 1,
+      "oblique": 1
+     }
+    },
+    "oblique": {
+     "n": 8,
+     "right": 75.0,
+     "asked_doctor": 12.5,
+     "wrong": 12.5,
+     "mistaken_for": {
+      "not_foot": 1,
+      "unsure": 1
+     }
+    },
+    "not_foot": {
+     "n": 653,
+     "right": 98.9,
+     "asked_doctor": 1.1,
+     "wrong": 0.0,
+     "mistaken_for": {
+      "unsure": 7
+     }
+    }
+   }
+  }
+ },
+ "flat_foot": {
+  "learned_from": {
+   "n": 165,
+   "measured": 165,
+   "not_measured": 0,
+   "accuracy": 93.3,
+   "right": 154,
+   "flat_caught": [
+    95,
+    100
+   ],
+   "normal_cleared": [
+    59,
+    65
+   ],
+   "end_to_end_right": 93.3,
+   "routed_right_or_asked": 100.0
+  },
+  "other_foot_of_learned_patient": {
+   "n": 164,
+   "measured": 164,
+   "not_measured": 0,
+   "accuracy": 92.1,
+   "right": 151,
+   "flat_caught": [
+    96,
+    100
+   ],
+   "normal_cleared": [
+    55,
+    64
+   ],
+   "end_to_end_right": 92.1,
+   "routed_right_or_asked": 100.0
+  },
+  "never_seen": {
+   "n": 211,
+   "measured": 210,
+   "not_measured": 1,
+   "accuracy": 93.8,
+   "right": 197,
+   "flat_caught": [
+    189,
+    201
+   ],
+   "normal_cleared": [
+    8,
+    9
+   ],
+   "end_to_end_right": 93.4,
+   "routed_right_or_asked": 100.0
+  },
+  "heel_spur_found_on_flat_foot_xrays": {
+   "normal": 515,
+   "sever": 17,
+   "spur": 8
+  }
+ },
+ "heel_spur": {
+  "learned_from": {
+   "n": 2768,
+   "accuracy_3_way": 99.0,
+   "right": 2741,
+   "problem_vs_no_problem": 99.0,
+   "per_class": {
+    "normal": [
+     1275,
+     1289
+    ],
+    "spur": [
+     907,
+     920
+    ],
+    "sever": [
+     559,
+     559
+    ]
+   },
+   "confusion": {
+    "normal": {
+     "normal": 1275,
+     "sever": 4,
+     "spur": 10
+    },
+    "sever": {
+     "normal": 0,
+     "sever": 559,
+     "spur": 0
+    },
+    "spur": {
+     "normal": 13,
+     "sever": 0,
+     "spur": 907
+    }
+   },
+   "end_to_end_right": 99.0,
+   "routed_right_or_asked": 100.0
+  },
+  "tuning": {
+   "n": 593,
+   "accuracy_3_way": 98.5,
+   "right": 584,
+   "problem_vs_no_problem": 98.7,
+   "per_class": {
+    "normal": [
+     273,
+     277
+    ],
+    "spur": [
+     195,
+     197
+    ],
+    "sever": [
+     116,
+     119
+    ]
+   },
+   "confusion": {
+    "normal": {
+     "normal": 273,
+     "sever": 0,
+     "spur": 4
+    },
+    "sever": {
+     "normal": 2,
+     "sever": 116,
+     "spur": 1
+    },
+    "spur": {
+     "normal": 2,
+     "sever": 0,
+     "spur": 195
+    }
+   },
+   "end_to_end_right": 98.5,
+   "routed_right_or_asked": 100.0
+  },
+  "never_seen": {
+   "n": 595,
+   "accuracy_3_way": 97.5,
+   "right": 580,
+   "problem_vs_no_problem": 97.5,
+   "per_class": {
+    "normal": [
+     270,
+     276
+    ],
+    "spur": [
+     191,
+     199
+    ],
+    "sever": [
+     119,
+     120
+    ]
+   },
+   "confusion": {
+    "normal": {
+     "normal": 270,
+     "sever": 1,
+     "spur": 5
+    },
+    "sever": {
+     "normal": 1,
+     "sever": 119,
+     "spur": 0
+    },
+    "spur": {
+     "normal": 8,
+     "sever": 0,
+     "spur": 191
+    }
+   },
+   "end_to_end_right": 97.5,
+   "routed_right_or_asked": 100.0
+  },
+  "flat_foot_answer_on_heel_spur_xrays": {
+   "Normal arch": 1277,
+   "Flat foot": 1191,
+   "Not measured": 1123,
+   "High arch": 365
+  }
+ },
+ "bunion": {
+  "learned_from": {
+   "images": 967,
+   "feet": 1106,
+   "feet_found": 1103,
+   "hva_within_3": 90.6,
+   "ima_within_3": 97.3,
+   "both_within_3": 88.7,
+   "hva_avg_error": 1.43,
+   "ima_avg_error": 1.06,
+   "same_grade": 89.6,
+   "grade_within_one": 99.5,
+   "end_to_end_both_within_3": 88.7,
+   "routed_right_or_asked": 100.0
+  },
+  "tuning": {
+   "images": 275,
+   "feet": 321,
+   "feet_found": 319,
+   "hva_within_3": 80.1,
+   "ima_within_3": 93.1,
+   "both_within_3": 77.3,
+   "hva_avg_error": 1.81,
+   "ima_avg_error": 1.3,
+   "same_grade": 86.3,
+   "grade_within_one": 99.1,
+   "end_to_end_both_within_3": 77.3,
+   "routed_right_or_asked": 100.0
+  },
+  "never_seen": {
+   "images": 140,
+   "feet": 160,
+   "feet_found": 160,
+   "hva_within_3": 84.4,
+   "ima_within_3": 95.6,
+   "both_within_3": 83.1,
+   "hva_avg_error": 1.8,
+   "ima_avg_error": 1.12,
+   "same_grade": 85.6,
+   "grade_within_one": 100.0,
+   "end_to_end_both_within_3": 83.1,
+   "routed_right_or_asked": 100.0
+  },
+  "never_seen_extra": {
+   "images": 10,
+   "feet": 11,
+   "feet_found": 11,
+   "hva_within_3": 90.9,
+   "ima_within_3": 100.0,
+   "both_within_3": 90.9,
+   "hva_avg_error": 1.37,
+   "ima_avg_error": 1.22,
+   "same_grade": 81.8,
+   "grade_within_one": 100.0,
+   "end_to_end_both_within_3": 90.9,
+   "routed_right_or_asked": 100.0
+  }
+ },
+ "speed_full_checks": {
+  "median_seconds_per_xray": 0.68,
+  "p90_seconds_per_xray": 3.66
+ }
+}
