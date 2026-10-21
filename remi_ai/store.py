@@ -103,6 +103,7 @@ class Store:
         add("visits", "signed_by", "TEXT NOT NULL DEFAULT ''")
         add("visits", "signed_at", "TEXT NOT NULL DEFAULT ''")
         add("visits", "report", "TEXT NOT NULL DEFAULT ''")           # PDF file name in the patient folder
+        add("xrays", "marks", "TEXT NOT NULL DEFAULT '[]'")           # the doctor's pen strokes and flag labels
 
     # ---- settings ------------------------------------------------------------------
     def setting(self, key, default=None):
@@ -286,6 +287,10 @@ class Store:
         self.db.execute("UPDATE xrays SET results = ? WHERE id = ?", (json.dumps(results), xray_id))
         self.db.commit()
 
+    def set_marks(self, xray_id, marks):
+        self.db.execute("UPDATE xrays SET marks = ? WHERE id = ?", (json.dumps(marks), xray_id))
+        self.db.commit()
+
     def set_reviewed(self, xray_id, reviewed=True):
         self.db.execute("UPDATE xrays SET reviewed = ? WHERE id = ?", (int(reviewed), xray_id))
         self.db.commit()
@@ -304,6 +309,7 @@ class Store:
     def _xray_row(self, r):
         d = dict(r)
         d["results"] = json.loads(d["results"] or "{}")
+        d["marks"] = json.loads(d.get("marks") or "[]")
         pid = self.db.execute("SELECT patient_id FROM visits WHERE id = ?", (d["visit_id"],)).fetchone()[0]
         d["path"] = os.path.join(self.patient_dir(pid), d["file"])
         d["patient_id"] = pid

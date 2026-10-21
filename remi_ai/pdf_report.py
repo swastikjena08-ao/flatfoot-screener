@@ -8,7 +8,7 @@ import io
 import os
 
 from fpdf import FPDF
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .engine import CHECKS, VIEWS, findings
 
@@ -34,7 +34,47 @@ def nice_date(iso):
         return iso or ""
 
 
-def annotated(path, results, size=900):
+def _label_font(px):
+    for f in (r"C:\Windows\Fonts\segoeui.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
+        if os.path.exists(f):
+            return ImageFont.truetype(f, px)
+    return ImageFont.load_default()
+
+
+def _hex(c):
+    c = str(c).lstrip("#")
+    try:
+        return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return (255, 90, 95)
+
+
+def draw_marks(img, marks, s):
+    """The doctor's own pen strokes and flag labels, scaled by `s` from image pixels."""
+    d = ImageDraw.Draw(img)
+    lw = max(2, round(img.width / 300))
+    u = max(img.width, img.height) / 900
+    font = _label_font(max(14, round(24 * u)))  # larger than on screen: the PDF shows the X-ray small
+    for m in marks or []:
+        col = _hex(m.get("color"))
+        if m.get("type") == "pen":
+            pts = [(x * s, y * s) for x, y in m["points"]]
+            d.line(pts, fill=col, width=lw, joint="curve")
+        elif m.get("type") == "flag":
+            px, py = m["pin"][0] * s, m["pin"][1] * s
+            ax, ay = m["at"][0] * s, m["at"][1] * s
+            text = m.get("text") or ""
+            l, t, r, b = d.textbbox((0, 0), text, font=font)
+            pad = round(7 * u)
+            box = (ax, ay, ax + (r - l) + 2 * pad, ay + (b - t) + 2 * pad)
+            cx, cy = min(max(px, box[0]), box[2]), min(max(py, box[1]), box[3])
+            d.line((px, py, cx, cy), fill=col, width=max(1, lw - 1))
+            d.ellipse((px - lw * 2, py - lw * 2, px + lw * 2, py + lw * 2), fill=col)
+            d.rounded_rectangle(box, radius=round(5 * u), fill=(10, 10, 12), outline=col, width=max(1, lw - 1))
+            d.text((ax + pad - l, ay + pad - t), text, fill=(246, 245, 242), font=font)
+
+
+def annotated(path, results, size=900, marks=None):
     """The X-ray with Remi's lines drawn on it, as an RGB image (longest side `size`)."""
     img = ImageOps.exif_transpose(Image.open(path))
     if img.mode.startswith("I") or img.mode == "F":
@@ -80,6 +120,7 @@ def annotated(path, results, size=900):
             seg(p[i], p[i + 1], col)
             dot(p[i], col)
             dot(p[i + 1], col)
+    draw_marks(img, marks, s)
     return img
 
 
@@ -169,7 +210,7 @@ def write_pdf(folder, p, hist, visit, xrays, doctor, signer=None, previous=()):
     width = pdf.w - pdf.l_margin - pdf.r_margin
     img_w = 62
     for x in xrays:
-        img = annotated(x["path"], x["results"])
+        img = annotated(x["path"], x["results"], marks=x.get("marks"))
         img_h = img_w * img.height / img.width
         if pdf.get_y() + min(img_h, 90) > pdf.h - 24:
             pdf.add_page()
@@ -200,6 +241,9 @@ def write_pdf(folder, p, hist, visit, xrays, doctor, signer=None, previous=()):
             notes.append("Measuring points adjusted by the doctor: " + ", ".join(CHECKS[k]["name"] for k in edited) + ".")
         for k, why in x["results"].get("skipped", {}).items():
             notes.append(f"{CHECKS[k]['name']}: {why.replace('Not run: ', 'not run, ')}.")
+        labels = [m["text"] for m in x.get("marks") or [] if m.get("type") == "flag" and m.get("text")]
+        if labels:
+            notes.append("Doctor's labels: " + "; ".join(labels) + ".")
         notes.append("Reviewed by the doctor." if x["reviewed"] else "Not marked as reviewed.")
         pdf.set_xy(left, pdf.get_y() + 1)
         pdf.use(8.5, False, MUTED)

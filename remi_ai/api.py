@@ -294,7 +294,8 @@ class Api:
         url, w, h = image_data_url(x["path"])
         visit = self._store.visit(x["visit_id"])
         out = self._xray_summary(x)
-        out.update({"image": url, "width": w, "height": h, "results": x["results"], "date": visit["date"]})
+        out.update({"image": url, "width": w, "height": h, "results": x["results"], "date": visit["date"],
+                    "marks": x["marks"]})
         prev = self._store.previous_xray(visit["patient_id"], x["visit_id"], x["view"])
         if prev is not None and prev["results"]:
             purl, pw, ph = image_data_url(prev["path"])
@@ -311,6 +312,24 @@ class Api:
         finding = adjust_points(results, key, index, points)
         self._store.set_results(xray_id, results)
         return finding
+
+    @safe
+    def save_marks(self, xray_id, marks):
+        """The doctor's pen strokes and flag labels drawn on this X-ray (in image pixels)."""
+        self._need_login()
+        if self._store.xray(xray_id) is None:
+            raise ValueError("That X-ray no longer exists.")
+        clean = []
+        for m in marks if isinstance(marks, list) else []:
+            if m.get("type") == "pen" and len(m.get("points", [])) >= 2:
+                clean.append({"type": "pen", "color": str(m.get("color", "#ff5a5f"))[:16],
+                              "points": [[round(float(a), 1), round(float(b), 1)] for a, b in m["points"][:4000]]})
+            elif m.get("type") == "flag":
+                clean.append({"type": "flag", "color": str(m.get("color", "#ff5a5f"))[:16],
+                              "text": str(m.get("text", ""))[:200],
+                              "pin": [round(float(v), 1) for v in m["pin"]], "at": [round(float(v), 1) for v in m["at"]]})
+        self._store.set_marks(xray_id, clean)
+        return {"ok": True, "count": len(clean)}
 
     @safe
     def mark_reviewed(self, xray_id, reviewed=True):

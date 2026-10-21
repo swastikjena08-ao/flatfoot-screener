@@ -306,3 +306,34 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 .status.bad { background: var(--red); }
 .acct-grid > *, .card.acct .form-grid > * { min-width: 0; }
 .card.acct .field input { width: 100%; min-width: 0; }
+
+/* Mark up: pen strokes and flag labels on the X-ray */
+.mk-pen { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.mk-lead { stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.mk-pin { stroke: rgba(0,0,0,.6); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.mk-label rect { fill: rgba(10,10,12,.85); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.mk-label text { font-family: var(--font); }
+.mk-label { cursor: move; }
+svg.xr.marking { cursor: crosshair; touch-action: none; }
+svg.xr.marking.tool-erase { cursor: not-allowed; }
+svg.xr.marking.tool-erase [data-mark] { cursor: pointer; }
+svg.xr.marking.tool-erase .mk-pen:hover { stroke-width: 6; opacity: .6; }
+svg.xr.marking.tool-erase .mk-flag:hover { opacity: .5; }
+svg.xr.marking .mk-pin { cursor: grab; }
+svg.xr.marking .ov-grab { pointer-events: none; }
+.markbar { position: absolute; top: 58px; left: calc(20px + (100% - 400px) / 2); transform: translateX(-50%); z-index: 6;
+  display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line-2); backdrop-filter: blur(16px); }
+.full .markbar { left: 50%; }
+.markbar button { height: 32px; min-width: 32px; padding: 0 9px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.markbar button svg { width: 16px; height: 16px; }
+.markbar button:hover:not(:disabled) { background: var(--glass-2); color: var(--fg); }
+.markbar button.on { background: rgba(255,255,255,.12); color: var(--fg); }
+.markbar button:disabled { opacity: .35; }
+.markbar .swatch { padding: 0; width: 30px; justify-content: center; }
+.markbar .swatch b { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.4); }
+.markbar .swatch.on b { box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px currentColor; color: var(--fg); }
+.markbar .sep { width: 1px; height: 20px; background: var(--line-2); margin: 0 4px; }
+.markbar .done { background: var(--white); color: #0a0a0a; margin-left: 4px; }
+.markbar .done:hover { background: var(--white) !important; color: #0a0a0a !important; }
+.fab.mk.on { background: var(--white); color: #0a0a0a; border-color: var(--white); }
+.flag-edit { position: fixed; z-index: 50; background: #121315; color: var(--fg); border: 1.5px solid; border-radius: 7px; padding: 0 10px; font-size: 13px; outline: none; }

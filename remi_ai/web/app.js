@@ -9,6 +9,10 @@ const ICON = {
   dots: '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>',
   pen: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 2.5l2.5 2.5L6 12.5H3.5V10z"/></svg>',
   expand: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3h5v5M8 17H3v-5M17 3l-6 6M3 17l6-6"/></svg>',
+  pen: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 3.5l3 3L7 16H4v-3z"/><path d="M11.5 5.5l3 3"/></svg>',
+  flag: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 17V3.5"/><path d="M5 4h10l-2.5 3.5L15 11H5"/></svg>',
+  eraser: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 16h8M3.5 11.5l7-7 5 5-6.5 6.5H7z"/><path d="M7 8l5 5"/></svg>',
+  undo: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 5L3.5 8.5 7 12"/><path d="M4 8.5h8a4 4 0 0 1 0 8H9"/></svg>',
   heat: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5c.5 3-3.5 4.6-3.5 8.6a3.5 3.5 0 0 0 7 0c0-1.6-.8-2.7-1.6-3.6-.2 1.4-.9 2.2-1.8 2.5.6-2.6-.2-5.2-.1-7.5z"/></svg>',
   spark: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 18 18"/><path d="M9 5.5v7M5.5 9h7" stroke-width="1.3"/></svg>',
   mic: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15"/></svg>',
@@ -20,6 +24,7 @@ const ICON = {
 };
 
 const S = {
+  mark: { on: false, tool: 'pen', color: '#ff5a5f', undo: [] },
   newDoctor: false,
   screen: 'loading', info: null, doctor: null, patients: [], q: '',
   pid: null, pdata: null, xid: null, xray: null, f: 0, tab: 'finding',
@@ -241,13 +246,138 @@ function overlayAll(x, fd, u) {
   const rest = others.map(o => overlaySvg(x, o, u)).join('');
   return `${heat}<g opacity="0.6">${rest}</g>${overlaySvg(x, fd, u, true)}`;
 }
+/* ---------- markup: pen strokes and flag labels the doctor draws on the X-ray ---------- */
+const MARK_COLORS = [['#ff5a5f', 'Red'], ['#f5b544', 'Amber'], ['#2ec4b6', 'Teal'], ['#7aa7ff', 'Blue'], ['#f6f5f2', 'White']];
+function markBar() {
+  const t = S.mark.tool, tool = (k, icon, label) => `<button class="${t === k ? 'on' : ''}" data-act="mtool" data-tool="${k}" title="${label}">${icon}<span>${label}</span></button>`;
+  return `<div class="markbar" role="toolbar" aria-label="Mark up tools">
+    ${tool('pen', ICON.pen, 'Pen')}${tool('flag', ICON.flag, 'Label')}${tool('erase', ICON.eraser, 'Eraser')}
+    <i class="sep"></i>
+    ${MARK_COLORS.map(([c, n]) => `<button class="swatch${S.mark.color === c ? ' on' : ''}" data-act="mcolor" data-color="${c}" title="${n}" aria-label="${n}"><b style="background:${c}"></b></button>`).join('')}
+    <i class="sep"></i>
+    <button data-act="mundo" title="Undo (Ctrl+Z)" ${S.mark.undo.length ? '' : 'disabled'}>${ICON.undo}</button>
+    <button data-act="mclear" title="Remove all markings on this X-ray" ${(S.xray.marks || []).length ? '' : 'disabled'}>Clear</button>
+    <button class="done" data-act="markup">Done</button>
+  </div>`;
+}
+function flagBox(m, u) {
+  const fs = 15 * u, text = m.text || 'Label', w = (text.length * 0.56 + 1.6) * fs, h = fs * 2;
+  return { x: m.at[0], y: m.at[1], w, h, fs, text };
+}
+function marksSvg(x) {
+  const u = Math.max(x.width, x.height) / 900;
+  return (x.marks || []).map((m, i) => {
+    if (m.type === 'pen') {
+      const d = m.points.map((p, j) => `${j ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('');
+      return `<path class="mk-pen" data-mark="${i}" d="${d}" stroke="${m.color}"/>`;
+    }
+    const b = flagBox(m, u), cx = Math.max(b.x, Math.min(m.pin[0], b.x + b.w)), cy = Math.max(b.y, Math.min(m.pin[1], b.y + b.h));
+    return `<g class="mk-flag" data-mark="${i}">
+      <line class="mk-lead" x1="${m.pin[0]}" y1="${m.pin[1]}" x2="${cx}" y2="${cy}" stroke="${m.color}"/>
+      <circle class="mk-pin" data-pin="${i}" cx="${m.pin[0]}" cy="${m.pin[1]}" r="${5 * u}" fill="${m.color}"><title>Drag to move the point</title></circle>
+      <g class="mk-label" data-flag="${i}"><title>Drag to move · double-click to edit</title>
+        <rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${6 * u}" stroke="${m.color}"/>
+        <text x="${b.x + 0.8 * b.fs}" y="${b.y + b.h / 2 + b.fs * 0.36}" font-size="${b.fs}" fill="${m.text ? '#f6f5f2' : 'rgba(246,245,242,.5)'}">${esc(b.text)}</text></g>
+    </g>`;
+  }).join('');
+}
+function redrawMarks() { const g = $('#marks'); if (g && S.xray) g.innerHTML = marksSvg(S.xray); }
+function pushUndo() { S.mark.undo.push(JSON.stringify(S.xray.marks || [])); if (S.mark.undo.length > 50) S.mark.undo.shift(); }
+let marksTimer = null;
+function saveMarks() {
+  const id = S.xid, marks = S.xray.marks;
+  clearTimeout(marksTimer);
+  marksTimer = setTimeout(() => guard(() => call('save_marks', id, marks)), 250);
+}
+function svgPoint(svg, e) {
+  const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  return [Math.max(0, Math.min(S.xray.width, p.x)), Math.max(0, Math.min(S.xray.height, p.y))];
+}
+function editFlag(i, isNew) {
+  const m = S.xray.marks[i], el = document.querySelector(`[data-flag="${i}"] rect`); if (!m || !el) return;
+  const r = el.getBoundingClientRect(), inp = document.createElement('input');
+  inp.className = 'flag-edit'; inp.value = m.text || ''; inp.placeholder = 'Type a label'; inp.maxLength = 200;
+  Object.assign(inp.style, { left: r.left + 'px', top: r.top + 'px', minWidth: Math.max(160, r.width) + 'px', height: Math.max(30, r.height) + 'px', borderColor: m.color });
+  document.body.appendChild(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = (keep) => {
+    if (done) return; done = true; inp.remove();
+    const t = inp.value.trim();
+    if (keep && t) { if (t !== m.text) { if (!isNew) pushUndo(); m.text = t; } }
+    else if (isNew && !t) { S.xray.marks.splice(i, 1); }
+    redrawMarks(); saveMarks(); render();
+  };
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); e.stopPropagation(); });
+  inp.addEventListener('blur', () => finish(true));
+}
+let MDRAG = null;
+document.addEventListener('pointerdown', (e) => {
+  if (!S.xray || S.screen !== 'patient') return;
+  const svg = e.target.closest && e.target.closest('svg.xr'); if (!svg) return;
+  const lab = e.target.closest('[data-flag]'), pin = e.target.closest('[data-pin]'), mk = e.target.closest('[data-mark]');
+  if (S.mark.on && S.mark.tool === 'erase') {
+    if (mk) { e.preventDefault(); e.stopPropagation(); pushUndo(); S.xray.marks.splice(+mk.dataset.mark, 1); redrawMarks(); saveMarks(); render(); }
+    return;
+  }
+  if (lab || (pin && S.mark.on)) {
+    // Labels can be dragged any time; the pin only while marking up.
+    e.preventDefault(); e.stopPropagation();
+    const i = +(lab ? lab.dataset.flag : pin.dataset.pin), m = S.xray.marks[i];
+    MDRAG = { kind: lab ? 'flag' : 'pin', i, svg, start: svgPoint(svg, e), pin: [...m.pin], at: [...m.at], moved: false, undo: JSON.stringify(S.xray.marks) };
+    document.body.classList.add('dragging');
+    return;
+  }
+  if (!S.mark.on) return;
+  e.preventDefault(); e.stopPropagation();
+  const p = svgPoint(svg, e);
+  S.xray.marks = S.xray.marks || [];
+  if (S.mark.tool === 'pen') {
+    pushUndo();
+    S.xray.marks.push({ type: 'pen', color: S.mark.color, points: [p] });
+    MDRAG = { kind: 'pen', i: S.xray.marks.length - 1, svg };
+  } else if (S.mark.tool === 'flag') {
+    pushUndo();
+    const u = Math.max(S.xray.width, S.xray.height) / 900;
+    S.xray.marks.push({ type: 'flag', color: S.mark.color, text: '', pin: p, at: [p[0] + 28 * u, p[1] - 52 * u] });
+    redrawMarks(); editFlag(S.xray.marks.length - 1, true);
+  }
+}, true);
+document.addEventListener('pointermove', (e) => {
+  if (!MDRAG) return;
+  const p = svgPoint(MDRAG.svg, e), m = S.xray.marks[MDRAG.i]; if (!m) return;
+  if (MDRAG.kind === 'pen') {
+    const last = m.points[m.points.length - 1], u = Math.max(S.xray.width, S.xray.height) / 900;
+    if (Math.hypot(p[0] - last[0], p[1] - last[1]) > 1.5 * u) m.points.push(p);
+  } else {
+    const dx = p[0] - MDRAG.start[0], dy = p[1] - MDRAG.start[1];
+    if (Math.hypot(dx, dy) > 1) MDRAG.moved = true;
+    if (MDRAG.kind === 'flag') { m.pin = [MDRAG.pin[0] + dx, MDRAG.pin[1] + dy]; m.at = [MDRAG.at[0] + dx, MDRAG.at[1] + dy]; }
+    else m.pin = [MDRAG.pin[0] + dx, MDRAG.pin[1] + dy];
+  }
+  redrawMarks();
+});
+document.addEventListener('pointerup', () => {
+  if (!MDRAG) return;
+  const d = MDRAG; MDRAG = null; document.body.classList.remove('dragging');
+  if (d.kind === 'pen') {
+    const m = S.xray.marks[d.i];
+    if (m && m.points.length < 2) m.points.push([m.points[0][0] + 0.5, m.points[0][1] + 0.5]);  // a tap leaves a dot
+    saveMarks(); render(); return;
+  }
+  if (d.moved) { S.mark.undo.push(d.undo); saveMarks(); render(); }
+});
+document.addEventListener('dblclick', (e) => {
+  const lab = e.target.closest && e.target.closest('[data-flag]');
+  if (lab && S.xray) { e.preventDefault(); editFlag(+lab.dataset.flag, false); }
+});
 function xraySvg(x, fd) {
   const u = Math.max(x.width, x.height) / 900;
   FRAME = [x.width, x.height];
   const filt = `filter: brightness(${(0.5 + S.bright / 100).toFixed(2)}) contrast(${(0.5 + S.contrast / 100).toFixed(2)});`;
-  return `<svg class="xr" viewBox="0 0 ${x.width} ${x.height}" preserveAspectRatio="xMidYMid meet" style="transform: scale(${S.zoom / 100})" role="img" aria-label="${esc(x.view_label)} X-ray">
+  return `<svg class="xr${S.mark.on ? ' marking tool-' + S.mark.tool : ''}" viewBox="0 0 ${x.width} ${x.height}" preserveAspectRatio="xMidYMid meet" style="transform: scale(${S.zoom / 100})" role="img" aria-label="${esc(x.view_label)} X-ray">
     <image href="${x.image}" x="0" y="0" width="${x.width}" height="${x.height}" preserveAspectRatio="none" style="${filt}"/>
     <g id="ov">${overlayAll(x, fd, u)}</g>
+    <g id="marks">${marksSvg(x)}</g>
   </svg>`;
 }
 function lens(image, w, h, region) {
@@ -405,6 +535,7 @@ function patientScreen() {
       <div class="views" role="tablist">${xs.map(v => `<button class="${v.id === S.xid ? 'on' : ''}" data-xray="${v.id}">${esc(v.view === 'unsure' ? 'Needs view' : v.view_label)} · ${fmtDate(v.date, true)}<span class="x" data-act="deleteTab" data-del="${v.id}" role="button" aria-label="Remove this X-ray" title="Remove this X-ray">×</span></button>`).join('')}<button class="add" data-act="addXray">+ Add X-ray</button></div>
     </div>
     ${x ? chips() : ''}
+    ${x && S.mark.on ? markBar() : ''}
     <div class="side">
       <div class="toolbar">
         <button class="btn" data-act="export" title="PDF report of the latest visit">${ICON.export}PDF report</button>
@@ -422,6 +553,7 @@ function patientScreen() {
       </div>
     </div>
     <div class="fabs">
+      ${x ? `<button class="fab heat mk${S.mark.on ? ' on' : ''}" data-act="markup" aria-label="Mark up" title="Draw and add labels on the X-ray">${ICON.pen}<span>Mark up</span></button>` : ''}
       <button class="fab heat${S.heat ? ' on' : ''}" data-act="heat" aria-label="Heat map" title="Heat map: where the AI looked">${ICON.heat}<span>Heat map</span></button>
       <button class="fab${S.full ? ' on' : ''}" data-act="full" aria-label="Full view" title="Full view">${ICON.expand}</button>
       <button class="fab${S.assist ? ' on' : ''}" data-act="assist" aria-label="Ask Remi" title="Ask Remi">${ICON.spark}</button>
@@ -678,7 +810,7 @@ async function openPatient(pid) {
     const xs = allXrays(); S.xid = xs.length ? xs[0].id : null; S.xray = S.xid ? await call('get_xray', S.xid) : null; render();
   });
 }
-async function openXray(id) { await guard(async () => { S.xid = id; S.f = 0; S.menu = false; S.writing = false; S.busy = ''; S.xray = await call('get_xray', id); render(); }); }
+async function openXray(id) { await guard(async () => { S.mark.undo = []; S.xid = id; S.f = 0; S.menu = false; S.writing = false; S.busy = ''; S.xray = await call('get_xray', id); render(); }); }
 function openNewPatient() { guard(async () => { S.modal = { kind: 'patient', nextId: await call('next_patient_id') }; render(); $('#f_name').focus(); }); }
 async function uploadFile(file) {
   if (!file || !S.pid) return;
@@ -705,6 +837,11 @@ async function doAct(act, el) {
     case 'pickF': S.f = +el.dataset.i; break;
     case 'nextF': { const n = findingList(x).length; S.f = (S.f + 1) % n; break; }
     case 'heat': S.heat = !S.heat; if (S.heat && x && !findingList(x).some(hasHeat)) toast('No heat map for this X-ray. Bunion angles are measured from points, not a map.'); break;
+    case 'markup': S.mark.on = !S.mark.on; S.mark.undo = []; if (S.mark.on) { S.overlay = S.overlay || 1; } break;
+    case 'mtool': S.mark.tool = el.dataset.tool; break;
+    case 'mcolor': S.mark.color = el.dataset.color; if (S.mark.tool === 'erase') S.mark.tool = 'pen'; break;
+    case 'mundo': if (S.mark.undo.length) { S.xray.marks = JSON.parse(S.mark.undo.pop()); saveMarks(); } break;
+    case 'mclear': if ((S.xray.marks || []).length) { pushUndo(); S.xray.marks = []; saveMarks(); toast('Markings cleared. Press undo to bring them back.'); } break;
     case 'full': S.full = !S.full; break;
     case 'assist': S.assist = !S.assist; break;
     case 'closeAssist': S.assist = false; if (recog) recog.stop(); S.listening = false; break;
@@ -877,6 +1014,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'topSearch') { S.q = e.target.value; goList(); }
   if (e.key === 'Enter' && e.target.matches('tr[data-open]')) e.target.click();
+  if (S.mark.on && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.target.matches('input, textarea')) { e.preventDefault(); doAct('mundo'); return; }
   if (e.key === 'Escape') { if (S.modal) { S.modal = null; render(); } else if (S.menu) { S.menu = false; render(); } }
   if (S.screen === 'patient' && !S.modal && !e.target.matches('input, textarea, select')) {
     if (e.key === 'ArrowRight' && S.xray) doAct('nextF');
@@ -914,7 +1052,7 @@ function liveAngles(fd) {
 }
 let DRAG = null;
 document.addEventListener('pointerdown', (e) => {
-  const h = e.target.closest('.ov-grab'); if (!h || !S.xray) return;
+  const h = e.target.closest('.ov-grab'); if (!h || !S.xray || S.mark.on) return;
   const fd = findingList(S.xray)[S.f]; if (!fd) return;
   e.preventDefault(); e.stopPropagation();
   DRAG = { fd, id: h.dataset.pt, svg: h.ownerSVGElement, moved: false };
