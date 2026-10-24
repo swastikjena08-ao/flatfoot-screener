@@ -20,6 +20,10 @@ To build a standalone `Remi AI.exe`, run `build_exe.bat`; the result is in `dist
 
 Developers can open the same app in a browser with `python -m remi_ai --browser`.
 
+## Voice
+
+Ask Remi listens through the microphone with an offline recogniser (Vosk, Indian English model). `run_remi.bat` installs it from `requirements-voice.txt`, and the speech model (about 36 MB) downloads once into the data folder on first start; after that no audio leaves the computer. Press F2 to speak one command, or turn on hands-free in the Ask Remi panel and start commands with "Remi". Answers to voice questions are read aloud with the Windows voices.
+
 ## Model files
 
 The app loads each model from its folder in [`ai_models/`](ai_models/). The flat foot and heel spur weights are in the repository. The X-ray check and bunion weights are not (their training data licences don't allow sharing them) and must be copied in by hand:
@@ -31,5 +35,5 @@ Without the X-ray check, Remi asks the doctor what kind of X-ray each upload is.
 
 ## Layout
 
-- `remi_ai/`: the app (`api.py` for everything the window can do, `engine.py` for model routing, `store.py` for patient records, `web/` for the interface)
+- `remi_ai/`: the app (`api.py` for everything the window can do, `engine.py` for model routing, `store.py` for patient records, `pdf_report.py` for the signed PDF, `voice.py` for offline speech, `web/` for the interface)
 - `ai_models/`: the trained models, one folder each

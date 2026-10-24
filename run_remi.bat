@@ -6,6 +6,7 @@ if not exist .venv\Scripts\python.exe (
     python -m venv .venv || goto :nopython
 )
 .venv\Scripts\python.exe -m pip install --quiet --disable-pip-version-check -r requirements-app.txt || (pause & goto :eof)
+.venv\Scripts\python.exe -m pip install --quiet --disable-pip-version-check -r requirements-voice.txt || echo Voice could not be installed; Remi will work without it.
 .venv\Scripts\python.exe -m remi_ai %*
 goto :eof
 :nopython

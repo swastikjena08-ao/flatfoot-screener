@@ -337,3 +337,11 @@ svg.xr.marking .ov-grab { pointer-events: none; }
 .markbar .done:hover { background: var(--white) !important; color: #0a0a0a !important; }
 .fab.mk.on { background: var(--white); color: #0a0a0a; border-color: var(--white); }
 .flag-edit { position: fixed; z-index: 50; background: #121315; color: var(--fg); border: 1.5px solid; border-radius: 7px; padding: 0 10px; font-size: 13px; outline: none; }
+
+/* Voice: mic level ring, hands-free indicator */
+.mic { --lvl: 0; position: relative; }
+.mic.live { box-shadow: 0 0 0 calc(2px + var(--lvl) * 10px) rgba(229,72,77,.28); transition: box-shadow .12s ease; animation: none; }
+.icon-btn.hf.on { background: var(--red); border-color: var(--red); color: #fff; }
+.hf-pill { --lvl: 0; position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20; display: inline-flex; align-items: center; gap: 9px;
+  height: 34px; padding: 0 14px; border-radius: 17px; background: var(--glass); border: 1px solid var(--line-2); backdrop-filter: blur(16px); font-size: 12px; color: var(--fg); }
+.hf-pill i { width: 9px; height: 9px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 calc(2px + var(--lvl) * 9px) rgba(229,72,77,.3); transition: box-shadow .12s ease; }

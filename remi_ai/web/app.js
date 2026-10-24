@@ -13,6 +13,7 @@ const ICON = {
   flag: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 17V3.5"/><path d="M5 4h10l-2.5 3.5L15 11H5"/></svg>',
   eraser: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 16h8M3.5 11.5l7-7 5 5-6.5 6.5H7z"/><path d="M7 8l5 5"/></svg>',
   undo: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 5L3.5 8.5 7 12"/><path d="M4 8.5h8a4 4 0 0 1 0 8H9"/></svg>',
+  ear: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8a4.5 4.5 0 0 1 9 0c0 3-3 3.5-3 6a2.5 2.5 0 0 1-4.6 1.3"/><path d="M8.5 8a2 2 0 0 1 4 0c0 1-1 1.4-1.6 2"/></svg>',
   heat: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5c.5 3-3.5 4.6-3.5 8.6a3.5 3.5 0 0 0 7 0c0-1.6-.8-2.7-1.6-3.6-.2 1.4-.9 2.2-1.8 2.5.6-2.6-.2-5.2-.1-7.5z"/></svg>',
   spark: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 18 18"/><path d="M9 5.5v7M5.5 9h7" stroke-width="1.3"/></svg>',
   mic: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15"/></svg>',
@@ -606,20 +607,18 @@ function confirmForm(text, act) {
 }
 
 /* ---------- Ask Remi ---------- */
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recog = null;
 function assistPanel(global) {
   if (!S.chat.length) S.chat.push({ me: false, t: `Hi ${S.doctor.name.split(' ').slice(0, 2).join(' ')}. I can guide you through Remi step by step. ${nextStep()}` });
   const sugg = S.screen === 'patient'
     ? ['What do I do next?', 'Explain this finding', 'Why was a check skipped?', 'Show the record']
     : ['What do I do next?', 'Add a new patient', 'How accurate are the models?'];
   return `<div class="assist${global ? ' global' : ''}" role="dialog" aria-label="Ask Remi">
-    <div class="assist-head"><span class="logo sm"><img src="img/remi_mark.png" alt=""></span><div style="flex:1"><b>Ask Remi</b><span>Voice or text · guides you step by step</span></div>
-      <div style="display:flex;gap:6px"><button class="icon-btn${S.speak ? '' : ' dim'}" data-act="speak" aria-label="Read answers aloud" title="Read answers aloud">${ICON.speaker}</button><button class="icon-btn" data-act="closeAssist" aria-label="Close">${ICON.close}</button></div></div>
+    <div class="assist-head"><span class="logo sm"><img src="img/remi_mark.png" alt=""></span><div style="flex:1"><b>Ask Remi</b><span>${voiceLine()}</span></div>
+      <div style="display:flex;gap:6px"><button class="icon-btn hf${V.handsfree ? ' on' : ' dim'}" data-act="handsfree" aria-label="Hands-free" title="Hands-free: keep listening for &quot;Remi, …&quot;">${ICON.ear}</button><button class="icon-btn${S.speak ? '' : ' dim'}" data-act="speak" aria-label="Read all answers aloud" title="Read all answers aloud (voice questions are always answered aloud)">${ICON.speaker}</button><button class="icon-btn" data-act="closeAssist" aria-label="Close">${ICON.close}</button></div></div>
     <div class="msgs" id="msgs">${S.chat.map(m => `<div class="msg ${m.me ? 'me' : 'bot'}">${esc(m.t)}</div>`).join('')}</div>
     <div class="sugg">${sugg.map(s => `<button data-say="${s}">${s}</button>`).join('')}</div>
-    <form class="composer" id="chatForm"><button type="button" class="mic${S.listening ? ' live' : ''}" data-act="mic" aria-label="Speak">${ICON.mic}</button>
-      <input id="chatIn" placeholder="${S.listening ? 'Listening…' : 'Type a question or command'}" autocomplete="off"><button class="btn solid" type="submit">Send</button></form>
+    <form class="composer" id="chatForm"><button type="button" class="mic${S.listening ? ' live' : ''}" data-act="mic" aria-label="Speak" title="Speak a command (F2)" style="--lvl:${V.level}">${ICON.mic}</button>
+      <input id="chatIn" placeholder="${S.listening ? 'Listening… speak now' : 'Type, or press F2 and speak'}" autocomplete="off"><button class="btn solid" type="submit">Send</button></form>
   </div>`;
 }
 function nextStep() {
@@ -737,6 +736,7 @@ function answer(q) {
   const s = q.toLowerCase().trim();
   const onPatient = S.screen === 'patient';
   let m;
+  if (/^(stop listening|hands[ -]?free off|stop hands[ -]?free|go to sleep)\b/.test(s)) { stopListening(); return 'Okay, I stopped listening.'; }
   if (S.intake) return intakeAnswer(q);
   if (/\b(new|add|create|register|make)\b.*\bpatient\b/.test(s)) return patientCommand(q, s);
   if (onPatient && (/\b(add|update|change|set|fill)\b.*\b(details?|info|history|age|phone|complaint|sex|gender)\b/.test(s) || /^(age|phone|mobile|complaint|diabetes|blood pressure|bp|medicines?|allerg|sex|gender)\b/.test(s))) {
@@ -772,7 +772,10 @@ function answer(q) {
   if (/zoom out/.test(s)) { S.zoom = Math.max(50, S.zoom - 25); return 'Zoomed out.'; }
   if (/bright/.test(s)) { S.bright = Math.min(100, S.bright + 10); return 'Brighter.'; }
   if (/dark/.test(s)) { S.bright = Math.max(0, S.bright - 10); return 'Darker.'; }
+  if (/(heat|map|focus).*\b(off|hide)\b|\b(hide|turn off)\b.*(heat|map)/.test(s)) { S.heat = false; return 'Heat map off.'; }
   if (/heat|map|focus/.test(s)) { S.heat = true; return 'Showing where the AI looked (the warm areas).'; }
+  if (/mark ?up|draw|annotate/.test(s)) { S.mark.on = true; return 'Mark up is on. Pick pen or label at the top of the X-ray.'; }
+  if (/next (x-?ray|image)/.test(s)) { const xs = allXrays(), i = xs.findIndex(v => v.id === S.xid); if (xs.length > 1) { openXray(xs[(i + 1) % xs.length].id); return 'Next X-ray.'; } return 'This patient has only one X-ray.'; }
   if (/hide.*line|lines off/.test(s)) { S.overlay = 0; return 'Lines hidden.'; }
   if (/line/.test(s)) { S.overlay = 1; return 'Lines shown.'; }
   if (/full|hide panel/.test(s)) { S.full = true; return 'Full view. Press the expand button to bring the panel back.'; }
@@ -783,21 +786,110 @@ async function say(text, byVoice) {
   let a;
   try { a = await answer(text); } catch (e) { a = e.message || 'Something went wrong.'; }
   S.chat.push({ me: false, t: a });
-  // During a voice interview, listen again once the question has been asked.
-  const listenAgain = () => { if (byVoice && S.intake && !S.listening) toggleMic(); };
-  if (S.speak && window.speechSynthesis) { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(a); u.onend = listenAgain; speechSynthesis.speak(u); }
-  else setTimeout(listenAgain, 300);
+  // Voice questions get spoken answers. During a voice interview Remi listens again after asking.
+  const after = () => {
+    if (!byVoice) return;
+    if (V.handsfree) V.followUp = Date.now() + 8000;
+    else if (S.intake && !S.listening) startListening('once');
+  };
+  if (byVoice || S.speak) speakText(a, after); else after();
   render();
-  const i = $('#chatIn'); if (i) i.focus();
+  const i = $('#chatIn'); if (i && !byVoice) i.focus();
 }
-function toggleMic() {
-  if (!SR) { toast('Voice input is not available on this computer. Type your question instead.'); return; }
-  if (S.listening && recog) { recog.stop(); return; }
+
+/* ---------- voice: offline speech recognition in Python (remi_ai/voice.py) + Windows voices ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;  // only used in the browser dev mode
+let recog = null;
+const V = { poll: null, handsfree: false, level: 0, partial: '', quietUntil: 0, followUp: 0, status: null };
+// What the recogniser may hear for "Remi" with an Indian English model.
+const WAKE = /^(?:(?:hey|hi|ok|okay|hello)\s+)?(?:remi|remy|rimi|ramy|reemi|remmy|romy|rummy|army|ready|ruby)\b[\s,]*/i;
+function voiceLine() {
+  const st = V.status;
+  if (V.handsfree) return 'Hands-free on · say "Remi, …"';
+  if (S.listening) return V.partial ? `Hearing: ${esc(V.partial)}` : 'Listening… speak now';
+  if (st && st.downloading != null) return `Setting up offline voice… ${st.downloading}%`;
+  return 'Voice or text · press F2 to speak';
+}
+function pickVoice() {
+  const vs = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  return vs.find(v => /en-IN/i.test(v.lang)) || vs.find(v => /en-GB/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
+}
+function speakText(text, then) {
+  if (!window.speechSynthesis) { if (then) then(); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text.replace(/°/g, ' degrees'));
+  const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; }
+  V.quietUntil = Date.now() + 60000;  // don't act on Remi's own voice coming back through the mic
+  u.onend = u.onerror = () => { V.quietUntil = Date.now() + 500; if (then) then(); };
+  speechSynthesis.speak(u);
+}
+if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => {};
+function updateVoiceUi() {
+  const mic = $('.composer .mic'); if (mic) { mic.style.setProperty('--lvl', V.level); mic.classList.toggle('live', S.listening || V.handsfree); }
+  const line = $('.assist-head span:not(.logo)'); if (line) line.textContent = voiceLine().replace(/&quot;/g, '"');
+  const inp = $('#chatIn'); if (inp && S.listening) inp.placeholder = V.partial ? V.partial + '…' : 'Listening… speak now';
+  const pill = $('#hfPill'); if (pill) pill.style.setProperty('--lvl', V.level);
+}
+async function startListening(mode) {
+  if (window.speechSynthesis && speechSynthesis.speaking && mode === 'once') speechSynthesis.cancel();
+  try {
+    await call('voice_start', mode);
+  } catch (e) {
+    if (mode === 'once' && SR && window.REMI_DEV) return webSpeechOnce();
+    V.status = await call('voice_status').catch(() => V.status);
+    toast(e.message); render(); return;
+  }
+  if (mode === 'handsfree') V.handsfree = true; else S.listening = true;
+  V.partial = '';
+  if (!V.poll) V.poll = setInterval(pollVoice, 150);
+  render();
+}
+async function stopListening() {
+  V.handsfree = false; S.listening = false; V.partial = '';
+  await call('voice_stop').catch(() => {});
+  render();
+}
+async function pollVoice() {
+  let r;
+  try { r = await call('voice_poll'); } catch (e) { return; }
+  V.level = r.level || 0; V.partial = r.partial || '';
+  for (const t of r.finals) heard(t);
+  if (!r.listening) {
+    clearInterval(V.poll); V.poll = null; V.level = 0;
+    const was = S.listening || V.handsfree; S.listening = false; V.handsfree = false; V.partial = '';
+    if (was) render();
+    return;
+  }
+  updateVoiceUi();
+}
+function heard(text) {
+  if (Date.now() < V.quietUntil) return;
+  if (!V.handsfree) { S.listening = false; S.assist = true; return say(text, true); }
+  const m = text.match(WAKE);
+  if (m) {
+    const cmd = text.slice(m[0].length).trim();
+    S.assist = true;
+    if (!cmd) { V.followUp = Date.now() + 8000; render(); return speakText('Yes?'); }
+    return say(cmd, true);
+  }
+  // Right after Remi asks something (or during an interview) the answer needs no "Remi".
+  if (Date.now() < V.followUp || S.intake) { S.assist = true; return say(text, true); }
+}
+function webSpeechOnce() {
   recog = new SR(); recog.lang = 'en-IN'; recog.interimResults = false;
   recog.onresult = (e) => { S.listening = false; say(e.results[0][0].transcript, true); };
   recog.onerror = () => { S.listening = false; render(); toast('I could not hear that. Try again or type it.'); };
   recog.onend = () => { if (S.listening) { S.listening = false; render(); } };
   S.listening = true; render(); recog.start();
+}
+function toggleMic() {
+  if (S.listening) { if (recog) recog.stop(); return stopListening(); }
+  if (V.handsfree) { V.followUp = Date.now() + 8000; toast('Listening. Go ahead.'); return; }
+  S.assist = true; startListening('once');
+}
+function handsfreePill() {
+  if (!V.handsfree || !S.doctor) return '';
+  return `<button class="hf-pill" id="hfPill" data-act="handsfree" title="Turn hands-free off" style="--lvl:${V.level}"><i></i>Hands-free · say “Remi, …”</button>`;
 }
 
 /* ---------- navigation and actions ---------- */
@@ -828,7 +920,7 @@ async function doAct(act, el) {
   switch (act) {
     case 'back': return goList();
     case 'toggleNewDoctor': S.newDoctor = !S.newDoctor; render(); return;
-    case 'logout': await call('logout'); S.doctor = null; S.chat = []; S.assist = false; S.screen = 'login'; S.info = await call('app_info'); render(); return;
+    case 'logout': if (S.listening || V.handsfree) await stopListening(); await call('logout'); S.doctor = null; S.chat = []; S.assist = false; S.screen = 'login'; S.info = await call('app_info'); render(); return;
     case 'newPatient': return openNewPatient();
     case 'closeModal': S.modal = null; render(); return;
     case 'editPatient': S.modal = { kind: 'patient', edit: true }; render(); return;
@@ -844,8 +936,9 @@ async function doAct(act, el) {
     case 'mclear': if ((S.xray.marks || []).length) { pushUndo(); S.xray.marks = []; saveMarks(); toast('Markings cleared. Press undo to bring them back.'); } break;
     case 'full': S.full = !S.full; break;
     case 'assist': S.assist = !S.assist; break;
-    case 'closeAssist': S.assist = false; if (recog) recog.stop(); S.listening = false; break;
-    case 'speak': S.speak = !S.speak; if (!S.speak && window.speechSynthesis) speechSynthesis.cancel(); break;
+    case 'closeAssist': S.assist = false; if (S.listening) await stopListening(); break;
+    case 'handsfree': if (V.handsfree) await stopListening(); else { if (S.listening) await call('voice_stop').catch(() => {}); S.listening = false; await startListening('handsfree'); if (V.handsfree) speakText('Hands-free is on. Say Remi, then your command.'); } return;
+    case 'speak': S.speak = !S.speak; if (!S.speak && window.speechSynthesis) speechSynthesis.cancel(); toast(S.speak ? 'Remi will read every answer aloud' : 'Remi will only speak answers to voice questions'); break;
     case 'mic': toggleMic(); return;
     case 'menu': S.menu = S.menu ? false : true; break;
     case 'changeView': S.menu = 'view'; break;
@@ -942,6 +1035,7 @@ function render() {
       : S.modal.kind === 'refer' ? referForm() : S.modal.kind === 'signoff' ? signOffForm() : confirmForm('Delete this X-ray?', 'confirmDelete');
     el.appendChild(m.firstElementChild);
   }
+  if (S.screen !== 'login') el.insertAdjacentHTML('beforeend', handsfreePill());
   const msgs = $('#msgs'); if (msgs) msgs.scrollTop = chatScroll === null ? msgs.scrollHeight : msgs.scrollHeight;
 }
 document.addEventListener('click', (e) => {
@@ -1015,6 +1109,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'topSearch') { S.q = e.target.value; goList(); }
   if (e.key === 'Enter' && e.target.matches('tr[data-open]')) e.target.click();
   if (S.mark.on && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.target.matches('input, textarea')) { e.preventDefault(); doAct('mundo'); return; }
+  if (e.key === 'F2' && S.doctor) { e.preventDefault(); toggleMic(); return; }
   if (e.key === 'Escape') { if (S.modal) { S.modal = null; render(); } else if (S.menu) { S.menu = false; render(); } }
   if (S.screen === 'patient' && !S.modal && !e.target.matches('input, textarea, select')) {
     if (e.key === 'ArrowRight' && S.xray) doAct('nextF');
@@ -1030,6 +1125,8 @@ document.addEventListener('drop', (e) => { if (S.screen !== 'patient') return; e
   render();
   try {
     S.info = await call('app_info');
+    V.status = await call('voice_status').catch(() => null);
+    if (V.status && V.status.downloading != null) { const t = setInterval(async () => { V.status = await call('voice_status').catch(() => V.status); updateVoiceUi(); if (!V.status || V.status.downloading == null) clearInterval(t); }, 1500); }
     S.screen = 'login';
     if (S.info.doctor) { S.doctor = S.info.doctor; await goList(); return; }
   } catch (e) { document.body.innerHTML = `<p style="padding:24px;color:#fff">Remi AI could not start: ${esc(e.message)}</p>`; return; }

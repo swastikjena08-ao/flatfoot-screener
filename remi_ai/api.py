@@ -22,6 +22,7 @@ import shutil
 from . import pdf_report, report
 from .engine import CHECKS, MODELS, VIEWS, Engine, adjust_points, findings
 from .store import DEFAULT_HISTORY, Store
+from .voice import Voice
 
 DISPLAY_MAX = 1800  # longest side of the copy sent to the window
 
@@ -70,6 +71,8 @@ class Api:
         self._engine = Engine(models_dir) if models_dir else Engine()
         self._doctor = None
         self._open_files = open_files
+        self._voice = Voice(self._store.dir)
+        self._voice.prepare()  # fetch the offline speech model in the background on first run
 
     # ---- helpers (not exposed: leading underscore) ----------------------------------
     def _need_login(self):
@@ -168,6 +171,27 @@ class Api:
     def model_status(self):
         """Every AI model: installed, passes a test run, how long it took, and its tested accuracy."""
         return list(self._engine.health().values())
+
+    # ---- voice (offline speech recognition for Ask Remi) ------------------------------
+    @safe
+    def voice_status(self):
+        return self._voice.status()
+
+    @safe
+    def voice_prepare(self):
+        return self._voice.prepare()
+
+    @safe
+    def voice_start(self, mode="once"):
+        return self._voice.start("handsfree" if mode == "handsfree" else "once")
+
+    @safe
+    def voice_poll(self):
+        return self._voice.poll()
+
+    @safe
+    def voice_stop(self):
+        return self._voice.stop()
 
     # ---- patients --------------------------------------------------------------------
     @safe
