@@ -856,6 +856,14 @@ function answer(q) {
   let m;
   if (/^(stop listening|hands[ -]?free off|stop hands[ -]?free|go to sleep)\b/.test(s)) { stopListening(); return 'Okay, I stopped listening.'; }
   if (S.intake) return intakeAnswer(q);
+  if (/(change|switch|next|different|another|new) (your )?voice/.test(s)) {
+    const vs = voiceList(); if (vs.length < 2) return 'This computer has only one English voice. You can add more in Windows Settings, under Time and language, Speech.';
+    const cur = pickVoice(), next = vs[(vs.indexOf(cur) + 1) % vs.length];
+    VOICE.name = next.name; saveVoice();
+    const reply = `This is my new voice: ${voiceLabel(next).replace(/ · /g, ', ')}. Say change voice again to hear another, or pick one on your account page.`;
+    setTimeout(() => speakText(reply), 0);
+    return reply;
+  }
   if (/\b(new|add|create|register|make)\b.*\bpatient\b/.test(s)) return patientCommand(q, s);
   if (onPatient && (/\b(add|update|change|set|fill)\b.*\b(details?|info|history|age|phone|complaint|sex|gender)\b/.test(s) || /^(age|phone|mobile|complaint|diabetes|blood pressure|bp|medicines?|allerg|sex|gender)\b/.test(s))) {
     return (async () => {
@@ -933,20 +941,36 @@ function voiceLine() {
   if (st && st.downloading != null) return `Setting up offline voice… ${st.downloading}%`;
   return 'Voice or text · press F2 to speak';
 }
-function pickVoice() {
-  const vs = window.speechSynthesis ? speechSynthesis.getVoices() : [];
-  return vs.find(v => /en-IN/i.test(v.lang)) || vs.find(v => /en-GB/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
+// Remi's spoken voice: any English voice installed in Windows, chosen on the account page or by
+// saying "change voice". The choice, speed and pitch are remembered on this computer.
+const VOICE = (() => { try { return JSON.parse(localStorage.getItem('remi.voice')) || {}; } catch (e) { return {}; } })();
+function saveVoice() { try { localStorage.setItem('remi.voice', JSON.stringify(VOICE)); } catch (e) { /* falls back to the default voice */ } }
+const isNatural = (v) => /natural|online|neural/i.test(v.name);
+function voiceList() {
+  const vs = window.speechSynthesis ? speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)) : [];
+  const rank = (v) => (isNatural(v) ? 0 : 4) + (/en-IN/i.test(v.lang) ? 0 : /en-GB/i.test(v.lang) ? 1 : 2);
+  return vs.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
+function pickVoice() {
+  const vs = voiceList();
+  return (VOICE.name && vs.find(v => v.name === VOICE.name)) || vs[0] || null;
+}
+function voiceLabel(v) {
+  const accent = { 'en-IN': 'Indian English', 'en-GB': 'British English', 'en-US': 'American English', 'en-AU': 'Australian English' }[v.lang.replace('_', '-')] || v.lang;
+  return `${v.name.replace(/^Microsoft\s+/, '').replace(/\s*-\s*English.*$/, '').replace(/\s*\(.*?\)\s*/g, ' ').trim()} · ${accent}${isNatural(v) ? ' · natural' : ''}`;
+}
+const VOICE_SAMPLE = 'Hi, I am Remi. I will guide you through each X-ray, step by step.';
 function speakText(text, then) {
   if (!window.speechSynthesis) { if (then) then(); return; }
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text.replace(/°/g, ' degrees'));
   const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; }
+  u.rate = VOICE.rate || 1; u.pitch = VOICE.pitch || 1;
   V.quietUntil = Date.now() + 60000;  // don't act on Remi's own voice coming back through the mic
   u.onend = u.onerror = () => { V.quietUntil = Date.now() + 500; if (then) then(); };
   speechSynthesis.speak(u);
 }
-if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => {};
+if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (S.screen === 'account') render(); };
 function updateVoiceUi() {
   const mic = $('.composer .mic'); if (mic) { mic.style.setProperty('--lvl', V.level); mic.classList.toggle('live', S.listening || V.handsfree); }
   const line = $('.assist-head span:not(.logo)'); if (line) line.textContent = voiceLine().replace(/&quot;/g, '"');
@@ -1065,6 +1089,8 @@ async function doAct(act, el) {
     case 'handsfree': if (V.handsfree) await stopListening(); else { if (S.listening) await call('voice_stop').catch(() => {}); S.listening = false; await startListening('handsfree'); if (V.handsfree) speakText('Hands-free is on. Say Remi, then your command.'); } return;
     case 'speak': S.speak = !S.speak; if (!S.speak && window.speechSynthesis) speechSynthesis.cancel(); toast(S.speak ? 'Remi will read every answer aloud' : 'Remi will only speak answers to voice questions'); break;
     case 'mic': toggleMic(); return;
+    case 'testVoice': speakText(VOICE_SAMPLE); return;
+    case 'resetVoice': for (const k of Object.keys(VOICE)) delete VOICE[k]; saveVoice(); speakText(VOICE_SAMPLE); break;
     case 'menu': S.menu = S.menu ? false : true; break;
     case 'changeView': S.menu = 'view'; break;
     case 'unreview': S.menu = false; await guard(async () => { await call('mark_reviewed', x.id, !x.reviewed); x.reviewed = !x.reviewed; await reloadPatient(); }); return;
@@ -1099,6 +1125,17 @@ async function openAccount() {
     S.models = await call('model_status'); if (S.screen === 'account') render();
   });
 }
+function voiceCard() {
+  const vs = voiceList(), cur = pickVoice(), rate = VOICE.rate || 1, pitch = VOICE.pitch || 1;
+  return `<div class="card acct"><h4>Remi's voice</h4>
+    <p class="empty-note" style="margin:0">How Remi sounds when it answers out loud. These are the English voices installed in Windows; you can also say "Remi, change voice".</p>
+    ${vs.length ? `<div class="field"><label for="v_name">Voice</label><select id="v_name">${vs.map(v => `<option value="${esc(v.name)}" ${cur && cur.name === v.name ? 'selected' : ''}>${esc(voiceLabel(v))}</option>`).join('')}</select></div>
+    <div class="field"><label for="v_rate">Speed <span class="num" id="v_rate_val">${rate.toFixed(2)}×</span></label><input id="v_rate" type="range" min="0.7" max="1.4" step="0.05" value="${rate}"></div>
+    <div class="field"><label for="v_pitch">Pitch <span class="num" id="v_pitch_val">${pitch.toFixed(2)}</span></label><input id="v_pitch" type="range" min="0.7" max="1.3" step="0.05" value="${pitch}"></div>
+    <div class="actions"><button type="button" class="btn" data-act="resetVoice">Default</button><button type="button" class="btn solid" data-act="testVoice">${ICON.speaker}Hear it</button></div>`
+    : '<p class="empty-note" style="margin:0">No English voices found on this computer. Add one in Windows Settings › Time &amp; language › Speech.</p>'}
+  </div>`;
+}
 function accountScreen() {
   const a = S.acct, me = a.me, doc = me.role === 'doctor';
   const models = S.models;
@@ -1130,6 +1167,7 @@ function accountScreen() {
         <div class="field"><label for="pw_new2">New password again</label><input id="pw_new2" type="password" autocomplete="new-password" required></div>
         <div class="err" id="pwErr"></div><div class="actions"><button class="btn solid" type="submit">Change password</button></div>
       </form>
+      ${voiceCard()}
       ${doc ? `<form class="card acct" id="asstForm"><h4>Assistant logins</h4>
         <p class="empty-note" style="margin:0">Assistants sign in with their own ID. They can add patients, X-rays and make the PDF report, but only you can sign off.</p>
         ${a.assistants.length ? `<div class="asst-list">${a.assistants.map(x => `<div><b>${esc(x.name)}</b><span class="num">${esc(x.doctor_id)}</span><button type="button" class="btn" data-act="removeAssistant" data-id="${esc(x.doctor_id)}">Remove</button></div>`).join('')}</div>` : ''}
@@ -1229,6 +1267,11 @@ document.addEventListener('submit', async (e) => {
   if (id === 'chatForm') { const v = $('#chatIn').value.trim(); if (v) say(v); }
 });
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'v_rate' || e.target.id === 'v_pitch') {
+    const k = e.target.id === 'v_rate' ? 'rate' : 'pitch', val = +e.target.value;
+    VOICE[k] = val; saveVoice();
+    $('#' + e.target.id + '_val').textContent = k === 'rate' ? val.toFixed(2) + '×' : val.toFixed(2);
+  }
   if (e.target.id === 'listSearch') {
     S.q = e.target.value;
     guard(async () => { await loadPatients(); render(); const i = $('#listSearch'); i.focus(); i.setSelectionRange(S.q.length, S.q.length); });
@@ -1244,6 +1287,10 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight' && S.xray) doAct('nextF');
     if (e.key === 'ArrowLeft' && S.xray) doAct('prevF');
   }
+});
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'v_name') { VOICE.name = e.target.value; saveVoice(); speakText(VOICE_SAMPLE); }
+  if (e.target.id === 'v_rate' || e.target.id === 'v_pitch') speakText(VOICE_SAMPLE);
 });
 $('#fileIn').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; uploadFile(f); });
 document.addEventListener('dragover', (e) => { if (S.screen === 'patient') { e.preventDefault(); const d = $('#drop'); if (d) d.classList.add('over'); } });

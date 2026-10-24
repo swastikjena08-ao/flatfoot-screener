@@ -319,6 +319,11 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 .status.bad { background: var(--red); }
 .acct-grid > *, .card.acct .form-grid > * { min-width: 0; }
 .card.acct .field input { width: 100%; min-width: 0; }
+.card.acct .field select { width: 100%; min-width: 0; }
+.card.acct .field input[type=range] { padding: 0; height: 22px; border: 0; background: none; accent-color: #2ec4b6; }
+.card.acct .field label .num { float: right; color: var(--fg); }
+.card.acct .actions { gap: 8px; }
+.card.acct .actions .btn svg { width: 14px; height: 14px; }
 
 /* Mark up: pen strokes and flag labels on the X-ray */
 .mk-pen { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
