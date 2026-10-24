@@ -12,6 +12,7 @@ const ICON = {
   pen: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 3.5l3 3L7 16H4v-3z"/><path d="M11.5 5.5l3 3"/></svg>',
   flag: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 17V3.5"/><path d="M5 4h10l-2.5 3.5L15 11H5"/></svg>',
   eraser: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 16h8M3.5 11.5l7-7 5 5-6.5 6.5H7z"/><path d="M7 8l5 5"/></svg>',
+  caret: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 4.5 3 3 3-3"/></svg>',
   undo: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 5L3.5 8.5 7 12"/><path d="M4 8.5h8a4 4 0 0 1 0 8H9"/></svg>',
   ear: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8a4.5 4.5 0 0 1 9 0c0 3-3 3.5-3 6a2.5 2.5 0 0 1-4.6 1.3"/><path d="M8.5 8a2 2 0 0 1 4 0c0 1-1 1.4-1.6 2"/></svg>',
   heat: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5c.5 3-3.5 4.6-3.5 8.6a3.5 3.5 0 0 0 7 0c0-1.6-.8-2.7-1.6-3.6-.2 1.4-.9 2.2-1.8 2.5.6-2.6-.2-5.2-.1-7.5z"/></svg>',
@@ -25,7 +26,7 @@ const ICON = {
 };
 
 const S = {
-  mark: { on: false, tool: 'pen', color: '#ff5a5f', undo: [] },
+  mark: { on: false, tool: 'pen', color: '#ff5a5f', undo: [], eraser: 'm', emenu: false },
   newDoctor: false,
   screen: 'loading', info: null, doctor: null, patients: [], q: '',
   pid: null, pdata: null, xid: null, xray: null, f: 0, tab: 'finding',
@@ -249,10 +250,25 @@ function overlayAll(x, fd, u) {
 }
 /* ---------- markup: pen strokes and flag labels the doctor draws on the X-ray ---------- */
 const MARK_COLORS = [['#ff5a5f', 'Red'], ['#f5b544', 'Amber'], ['#2ec4b6', 'Teal'], ['#7aa7ff', 'Blue'], ['#f6f5f2', 'White']];
+// Erasers, as in OneNote: three sizes that rub out the part of a pen stroke they pass over,
+// and a stroke eraser that removes a whole stroke or label on touch. Sizes are screen pixels.
+const ERASERS = [['s', 'Small eraser', 5], ['m', 'Medium eraser', 12], ['l', 'Large eraser', 26], ['stroke', 'Stroke eraser', 0]];
+const eraserOf = (k) => ERASERS.find(e => e[0] === k) || ERASERS[1];
+function eraserIcon(k) {
+  if (k === 'stroke') return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 13c3-6 5 2 8-3s4-2 6-4"/><path d="M12 12l5 5M17 12l-5 5"/></svg>';
+  const r = { s: 2.5, m: 4.5, l: 7 }[k];
+  return `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="${r}"/></svg>`;
+}
+function eraserMenu() {
+  return `<div class="er-menu" role="menu">${ERASERS.map(([k, n]) =>
+    `<button role="menuitemradio" aria-checked="${S.mark.eraser === k}" class="${S.mark.eraser === k ? 'on' : ''}" data-act="meraser" data-eraser="${k}">${eraserIcon(k)}<span>${n}</span>${S.mark.eraser === k ? ICON.check : ''}</button>`).join('')}</div>`;
+}
 function markBar() {
   const t = S.mark.tool, tool = (k, icon, label) => `<button class="${t === k ? 'on' : ''}" data-act="mtool" data-tool="${k}" title="${label}">${icon}<span>${label}</span></button>`;
+  const er = eraserOf(S.mark.eraser);
   return `<div class="markbar" role="toolbar" aria-label="Mark up tools">
-    ${tool('pen', ICON.pen, 'Pen')}${tool('flag', ICON.flag, 'Label')}${tool('erase', ICON.eraser, 'Eraser')}
+    ${tool('pen', ICON.pen, 'Pen')}${tool('flag', ICON.flag, 'Label')}
+    <span class="er-wrap"><button class="er-main${t === 'erase' ? ' on' : ''}" data-act="mtool" data-tool="erase" title="${er[1]}">${ICON.eraser}<span>${er[1].replace(' eraser', '')}</span></button><button class="er-caret${S.mark.emenu ? ' on' : ''}" data-act="emenu" title="Choose eraser" aria-haspopup="menu" aria-expanded="${S.mark.emenu}">${ICON.caret}</button>${S.mark.emenu ? eraserMenu() : ''}</span>
     <i class="sep"></i>
     ${MARK_COLORS.map(([c, n]) => `<button class="swatch${S.mark.color === c ? ' on' : ''}" data-act="mcolor" data-color="${c}" title="${n}" aria-label="${n}"><b style="background:${c}"></b></button>`).join('')}
     <i class="sep"></i>
@@ -311,13 +327,58 @@ function editFlag(i, isNew) {
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); e.stopPropagation(); });
   inp.addEventListener('blur', () => finish(true));
 }
+// Point eraser: cut away the parts of pen strokes within r of p, splitting a stroke in two
+// where the eraser crosses its middle. Labels are left alone (the stroke eraser removes them).
+function eraseAt(p, r) {
+  const marks = S.xray.marks || [], out = [];
+  let hit = false;
+  const near = (q) => Math.hypot(q[0] - p[0], q[1] - p[1]) <= r;
+  for (const m of marks) {
+    if (m.type !== 'pen') { out.push(m); continue; }
+    const pts = [];  // fill in long segments so the eraser can cut between far-apart points
+    m.points.forEach((q, j) => {
+      if (j) {
+        const a = m.points[j - 1], n = Math.ceil(Math.hypot(q[0] - a[0], q[1] - a[1]) / (r / 2));
+        for (let k = 1; k < n; k++) pts.push([a[0] + (q[0] - a[0]) * k / n, a[1] + (q[1] - a[1]) * k / n]);
+      }
+      pts.push(q);
+    });
+    if (!pts.some(near)) { out.push(m); continue; }
+    hit = true;
+    let run = [];
+    for (const q of pts) {
+      if (near(q)) { if (run.length > 1) out.push({ ...m, points: run }); run = []; }
+      else run.push(q);
+    }
+    if (run.length > 1) out.push({ ...m, points: run });
+  }
+  if (hit) S.xray.marks = out;
+  return hit;
+}
+// The round outline that follows the pointer while a sized eraser is picked.
+document.addEventListener('pointermove', (e) => {
+  let c = document.getElementById('ecur');
+  const svg = e.target.closest && e.target.closest('svg.xr.marking.tool-erase');
+  const r = svg && S.mark.eraser !== 'stroke' ? eraserOf(S.mark.eraser)[2] : 0;
+  if (!r) { if (c) c.style.display = 'none'; return; }
+  if (!c) { c = document.createElement('div'); c.id = 'ecur'; document.body.appendChild(c); }
+  Object.assign(c.style, { display: 'block', width: 2 * r + 'px', height: 2 * r + 'px', left: e.clientX - r + 'px', top: e.clientY - r + 'px' });
+});
 let MDRAG = null;
 document.addEventListener('pointerdown', (e) => {
   if (!S.xray || S.screen !== 'patient') return;
   const svg = e.target.closest && e.target.closest('svg.xr'); if (!svg) return;
   const lab = e.target.closest('[data-flag]'), pin = e.target.closest('[data-pin]'), mk = e.target.closest('[data-mark]');
   if (S.mark.on && S.mark.tool === 'erase') {
-    if (mk) { e.preventDefault(); e.stopPropagation(); pushUndo(); S.xray.marks.splice(+mk.dataset.mark, 1); redrawMarks(); saveMarks(); render(); }
+    e.preventDefault(); e.stopPropagation();
+    const flag = mk && S.xray.marks[+mk.dataset.mark] && S.xray.marks[+mk.dataset.mark].type === 'flag';
+    if (S.mark.eraser === 'stroke' || flag) {
+      if (mk) { pushUndo(); S.xray.marks.splice(+mk.dataset.mark, 1); redrawMarks(); saveMarks(); render(); }
+      return;
+    }
+    const p = svgPoint(svg, e);
+    MDRAG = { kind: 'erase', svg, r: eraserOf(S.mark.eraser)[2] / svg.getScreenCTM().a, last: p, changed: false, undo: JSON.stringify(S.xray.marks || []) };
+    if (eraseAt(p, MDRAG.r)) { MDRAG.changed = true; redrawMarks(); }
     return;
   }
   if (lab || (pin && S.mark.on)) {
@@ -345,7 +406,17 @@ document.addEventListener('pointerdown', (e) => {
 }, true);
 document.addEventListener('pointermove', (e) => {
   if (!MDRAG) return;
-  const p = svgPoint(MDRAG.svg, e), m = S.xray.marks[MDRAG.i]; if (!m) return;
+  const p = svgPoint(MDRAG.svg, e);
+  if (MDRAG.kind === 'erase') {
+    // Rub along the path since the last event so a fast swipe leaves no gaps.
+    const d = MDRAG, n = Math.max(1, Math.ceil(Math.hypot(p[0] - d.last[0], p[1] - d.last[1]) / (d.r / 2)));
+    let hit = false;
+    for (let k = 1; k <= n; k++) hit = eraseAt([d.last[0] + (p[0] - d.last[0]) * k / n, d.last[1] + (p[1] - d.last[1]) * k / n], d.r) || hit;
+    d.last = p;
+    if (hit) { d.changed = true; redrawMarks(); }
+    return;
+  }
+  const m = S.xray.marks[MDRAG.i]; if (!m) return;
   if (MDRAG.kind === 'pen') {
     const last = m.points[m.points.length - 1], u = Math.max(S.xray.width, S.xray.height) / 900;
     if (Math.hypot(p[0] - last[0], p[1] - last[1]) > 1.5 * u) m.points.push(p);
@@ -360,6 +431,10 @@ document.addEventListener('pointermove', (e) => {
 document.addEventListener('pointerup', () => {
   if (!MDRAG) return;
   const d = MDRAG; MDRAG = null; document.body.classList.remove('dragging');
+  if (d.kind === 'erase') {
+    if (d.changed) { S.mark.undo.push(d.undo); if (S.mark.undo.length > 50) S.mark.undo.shift(); saveMarks(); render(); }
+    return;
+  }
   if (d.kind === 'pen') {
     const m = S.xray.marks[d.i];
     if (m && m.points.length < 2) m.points.push([m.points[0][0] + 0.5, m.points[0][1] + 0.5]);  // a tap leaves a dot
@@ -375,7 +450,7 @@ function xraySvg(x, fd) {
   const u = Math.max(x.width, x.height) / 900;
   FRAME = [x.width, x.height];
   const filt = `filter: brightness(${(0.5 + S.bright / 100).toFixed(2)}) contrast(${(0.5 + S.contrast / 100).toFixed(2)});`;
-  return `<svg class="xr${S.mark.on ? ' marking tool-' + S.mark.tool : ''}" viewBox="0 0 ${x.width} ${x.height}" preserveAspectRatio="xMidYMid meet" style="transform: scale(${S.zoom / 100})" role="img" aria-label="${esc(x.view_label)} X-ray">
+  return `<svg class="xr${S.mark.on ? ' marking tool-' + S.mark.tool + (S.mark.tool === 'erase' ? ' er-' + S.mark.eraser : '') : ''}" viewBox="0 0 ${x.width} ${x.height}" preserveAspectRatio="xMidYMid meet" style="transform: scale(${S.zoom / 100})" role="img" aria-label="${esc(x.view_label)} X-ray">
     <image href="${x.image}" x="0" y="0" width="${x.width}" height="${x.height}" preserveAspectRatio="none" style="${filt}"/>
     <g id="ov">${overlayAll(x, fd, u)}</g>
     <g id="marks">${marksSvg(x)}</g>
@@ -427,7 +502,6 @@ function listScreen() {
         <td class="num">${esc(p.patient_id)}</td><td class="num">${fmtDate(p.last_visit || p.created)}</td><td class="num">${p.n_xrays}</td>
         <td>${findingTags(p.findings)}</td></tr>`).join('') || '<tr><td colspan="5" style="color:var(--muted)">No patient matches that search.</td></tr>'}</tbody>
     </table></div>` : `<div class="table-wrap"><div class="list-empty"><b style="font-weight:500;color:var(--fg);font-size:15px">No patients yet</b><span>Add your first patient to start their record, then add their X-rays.</span><button class="btn solid" data-act="newPatient">${ICON.plus}New patient</button></div></div>`}
-    ${S.assist ? assistPanel(true) : ''}
   </div>`;
 }
 
@@ -557,9 +631,7 @@ function patientScreen() {
       ${x ? `<button class="fab heat mk${S.mark.on ? ' on' : ''}" data-act="markup" aria-label="Mark up" title="Draw and add labels on the X-ray">${ICON.pen}<span>Mark up</span></button>` : ''}
       <button class="fab heat${S.heat ? ' on' : ''}" data-act="heat" aria-label="Heat map" title="Heat map: where the AI looked">${ICON.heat}<span>Heat map</span></button>
       <button class="fab${S.full ? ' on' : ''}" data-act="full" aria-label="Full view" title="Full view">${ICON.expand}</button>
-      <button class="fab${S.assist ? ' on' : ''}" data-act="assist" aria-label="Ask Remi" title="Ask Remi">${ICON.spark}</button>
     </div>
-    ${S.assist ? assistPanel(false) : ''}
     ${S.busy ? `<div class="busy"><div class="busy-box"><div class="spinner"></div><span>${esc(S.busy)}</span></div></div>` : ''}
   </div>`;
 }
@@ -607,12 +679,58 @@ function confirmForm(text, act) {
 }
 
 /* ---------- Ask Remi ---------- */
-function assistPanel(global) {
+// Ask Remi floats over every screen: a round Remi button that can be dragged anywhere, and a
+// chat window that opens beside it and can be moved by its title bar. Positions are remembered.
+const FLOAT = (() => { try { return JSON.parse(localStorage.getItem('remi.float')) || {}; } catch (e) { return {}; } })();
+const PANEL_W = 352, BUB = 54;
+function panelH() { return Math.min(560, window.innerHeight - 32); }
+function clampPos(x, y, w, h) { return [Math.max(8, Math.min(window.innerWidth - w - 8, x)), Math.max(8, Math.min(window.innerHeight - h - 8, y))]; }
+function bubblePos() { const b = FLOAT.bubble || [window.innerWidth - BUB - 20, window.innerHeight - BUB - 92]; return clampPos(b[0], b[1], BUB, BUB); }
+function panelPos() {
+  if (FLOAT.panel) return clampPos(FLOAT.panel[0], FLOAT.panel[1], PANEL_W, panelH());
+  const [bx, by] = bubblePos();  // first time: open beside the button, on whichever side has room
+  const x = bx > window.innerWidth / 2 ? bx - PANEL_W - 12 : bx + BUB + 12;
+  return clampPos(x, by + BUB - panelH(), PANEL_W, panelH());
+}
+function saveFloat() { try { localStorage.setItem('remi.float', JSON.stringify(FLOAT)); } catch (e) { /* positions just reset next time */ } }
+function floatingRemi() {
+  if (!S.doctor || S.screen === 'login') return '';
+  const [bx, by] = bubblePos();
+  return `<button class="remi-bubble${S.assist ? ' on' : ''}${S.listening || V.handsfree ? ' live' : ''}" id="remiBubble" style="left:${bx}px;top:${by}px" aria-label="Ask Remi" title="Ask Remi · drag to move"><img src="img/remi_mark.png" alt=""></button>
+    ${S.assist ? assistPanel() : ''}`;
+}
+let FDRAG = null;
+document.addEventListener('pointerdown', (e) => {
+  const bub = e.target.closest && e.target.closest('#remiBubble');
+  const head = !bub && e.target.closest && e.target.closest('.assist-head');
+  if (!bub && !(head && !e.target.closest('button'))) return;
+  const el = bub || head.closest('.assist'), r = el.getBoundingClientRect();
+  FDRAG = { el, kind: bub ? 'bubble' : 'panel', dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY, moved: false };
+  e.preventDefault();
+});
+document.addEventListener('pointermove', (e) => {
+  if (!FDRAG) return;
+  if (Math.hypot(e.clientX - FDRAG.sx, e.clientY - FDRAG.sy) > 4) FDRAG.moved = true;
+  if (!FDRAG.moved) return;
+  const r = FDRAG.el.getBoundingClientRect(), [x, y] = clampPos(e.clientX - FDRAG.dx, e.clientY - FDRAG.dy, r.width, r.height);
+  FDRAG.el.style.left = x + 'px'; FDRAG.el.style.top = y + 'px';
+  FLOAT[FDRAG.kind] = [x, y];
+  document.body.classList.add('dragging');
+});
+document.addEventListener('pointerup', () => {
+  if (!FDRAG) return;
+  const d = FDRAG; FDRAG = null; document.body.classList.remove('dragging');
+  if (d.moved) saveFloat();
+  else if (d.kind === 'bubble') doAct('assist');
+});
+window.addEventListener('resize', () => { if (S.doctor && S.screen !== 'login') render(); });
+function assistPanel() {
   if (!S.chat.length) S.chat.push({ me: false, t: `Hi ${S.doctor.name.split(' ').slice(0, 2).join(' ')}. I can guide you through Remi step by step. ${nextStep()}` });
   const sugg = S.screen === 'patient'
     ? ['What do I do next?', 'Explain this finding', 'Why was a check skipped?', 'Show the record']
     : ['What do I do next?', 'Add a new patient', 'How accurate are the models?'];
-  return `<div class="assist${global ? ' global' : ''}" role="dialog" aria-label="Ask Remi">
+  const [px, py] = panelPos();
+  return `<div class="assist" role="dialog" aria-label="Ask Remi" style="left:${px}px;top:${py}px;height:${panelH()}px">
     <div class="assist-head"><span class="logo sm"><img src="img/remi_mark.png" alt=""></span><div style="flex:1"><b>Ask Remi</b><span>${voiceLine()}</span></div>
       <div style="display:flex;gap:6px"><button class="icon-btn hf${V.handsfree ? ' on' : ' dim'}" data-act="handsfree" aria-label="Hands-free" title="Hands-free: keep listening for &quot;Remi, …&quot;">${ICON.ear}</button><button class="icon-btn${S.speak ? '' : ' dim'}" data-act="speak" aria-label="Read all answers aloud" title="Read all answers aloud (voice questions are always answered aloud)">${ICON.speaker}</button><button class="icon-btn" data-act="closeAssist" aria-label="Close">${ICON.close}</button></div></div>
     <div class="msgs" id="msgs">${S.chat.map(m => `<div class="msg ${m.me ? 'me' : 'bot'}">${esc(m.t)}</div>`).join('')}</div>
@@ -774,6 +892,11 @@ function answer(q) {
   if (/dark/.test(s)) { S.bright = Math.max(0, S.bright - 10); return 'Darker.'; }
   if (/(heat|map|focus).*\b(off|hide)\b|\b(hide|turn off)\b.*(heat|map)/.test(s)) { S.heat = false; return 'Heat map off.'; }
   if (/heat|map|focus/.test(s)) { S.heat = true; return 'Showing where the AI looked (the warm areas).'; }
+  if (/eraser|erase|rub out/.test(s) && S.xray) {
+    const k = /stroke|whole/.test(s) ? 'stroke' : /small|little|tiny/.test(s) ? 's' : /large|big/.test(s) ? 'l' : /medium/.test(s) ? 'm' : S.mark.eraser;
+    S.mark.on = true; S.mark.tool = 'erase'; S.mark.eraser = k;
+    return `${eraserOf(k)[1]} on. ${k === 'stroke' ? 'Touch a line or label to remove it.' : 'Rub over a line to erase that part.'}`;
+  }
   if (/mark ?up|draw|annotate/.test(s)) { S.mark.on = true; return 'Mark up is on. Pick pen or label at the top of the X-ray.'; }
   if (/next (x-?ray|image)/.test(s)) { const xs = allXrays(), i = xs.findIndex(v => v.id === S.xid); if (xs.length > 1) { openXray(xs[(i + 1) % xs.length].id); return 'Next X-ray.'; } return 'This patient has only one X-ray.'; }
   if (/hide.*line|lines off/.test(s)) { S.overlay = 0; return 'Lines hidden.'; }
@@ -930,8 +1053,10 @@ async function doAct(act, el) {
     case 'nextF': { const n = findingList(x).length; S.f = (S.f + 1) % n; break; }
     case 'heat': S.heat = !S.heat; if (S.heat && x && !findingList(x).some(hasHeat)) toast('No heat map for this X-ray. Bunion angles are measured from points, not a map.'); break;
     case 'markup': S.mark.on = !S.mark.on; S.mark.undo = []; if (S.mark.on) { S.overlay = S.overlay || 1; } break;
-    case 'mtool': S.mark.tool = el.dataset.tool; break;
-    case 'mcolor': S.mark.color = el.dataset.color; if (S.mark.tool === 'erase') S.mark.tool = 'pen'; break;
+    case 'mtool': S.mark.emenu = false; S.mark.tool = el.dataset.tool; break;
+    case 'emenu': S.mark.emenu = !S.mark.emenu; break;
+    case 'meraser': S.mark.eraser = el.dataset.eraser; S.mark.tool = 'erase'; S.mark.emenu = false; break;
+    case 'mcolor': S.mark.emenu = false; S.mark.color = el.dataset.color; if (S.mark.tool === 'erase') S.mark.tool = 'pen'; break;
     case 'mundo': if (S.mark.undo.length) { S.xray.marks = JSON.parse(S.mark.undo.pop()); saveMarks(); } break;
     case 'mclear': if ((S.xray.marks || []).length) { pushUndo(); S.xray.marks = []; saveMarks(); toast('Markings cleared. Press undo to bring them back.'); } break;
     case 'full': S.full = !S.full; break;
@@ -970,7 +1095,7 @@ async function doAct(act, el) {
 async function openAccount() {
   await guard(async () => {
     if (S.screen !== 'account') S.prevScreen = S.screen;
-    S.acct = await call('account'); S.screen = 'account'; S.models = null; S.assist = false; render();
+    S.acct = await call('account'); S.screen = 'account'; S.models = null; render();
     S.models = await call('model_status'); if (S.screen === 'account') render();
   });
 }
@@ -1035,12 +1160,16 @@ function render() {
       : S.modal.kind === 'refer' ? referForm() : S.modal.kind === 'signoff' ? signOffForm() : confirmForm('Delete this X-ray?', 'confirmDelete');
     el.appendChild(m.firstElementChild);
   }
-  if (S.screen !== 'login') el.insertAdjacentHTML('beforeend', handsfreePill());
+  if (S.screen !== 'login') el.insertAdjacentHTML('beforeend', handsfreePill() + floatingRemi());
   const msgs = $('#msgs'); if (msgs) msgs.scrollTop = chatScroll === null ? msgs.scrollHeight : msgs.scrollHeight;
 }
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-open],[data-xray],[data-tab],[data-act],[data-chip],[data-say],[data-view]');
-  if (!t) { if (S.menu === true && !e.target.closest('.menu')) { S.menu = false; render(); } return; }
+  if (!t) {
+    if (S.mark.emenu && !e.target.closest('.er-menu')) { S.mark.emenu = false; render(); }
+    if (S.menu === true && !e.target.closest('.menu')) { S.menu = false; render(); }
+    return;
+  }
   const d = t.dataset;
   if (d.open) return openPatient(d.open);
   if (d.xray) return openXray(+d.xray);

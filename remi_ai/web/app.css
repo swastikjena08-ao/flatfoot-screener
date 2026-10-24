@@ -166,8 +166,8 @@ textarea.notes { width: 100%; min-height: 70px; resize: vertical; background: rg
 .fab.on { background: var(--white); color: #000; }
 
 /* Assistant */
-.assist { position: absolute; right: 16px; top: 12px; bottom: 16px; width: 344px; z-index: 6; background: rgba(14,14,16,.94); border: 1px solid var(--line-2); border-radius: 14px; backdrop-filter: blur(22px); display: flex; flex-direction: column; overflow: hidden; }
-.assist-head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+.assist { position: fixed; width: 352px; z-index: 30; box-shadow: 0 18px 48px rgba(0,0,0,.55); background: rgba(14,14,16,.94); border: 1px solid var(--line-2); border-radius: 14px; backdrop-filter: blur(22px); display: flex; flex-direction: column; overflow: hidden; }
+.assist-head { cursor: move; user-select: none; touch-action: none; padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
 .assist-head b { font-weight: 500; }
 .assist-head span { color: var(--muted); font-size: 11.5px; display: block; }
 .msgs { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -236,7 +236,13 @@ textarea.notes { width: 100%; min-height: 70px; resize: vertical; background: rg
 .section-label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-top: 4px; }
 .list-empty { padding: 40px 16px; text-align: center; color: var(--muted); display: grid; gap: 12px; justify-items: center; }
 .model-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.assist.global { top: 16px; }
+.remi-bubble { position: fixed; z-index: 31; width: 54px; height: 54px; border-radius: 50%; padding: 0; display: grid; place-items: center; cursor: grab; touch-action: none;
+  background: #0d1f33; border: 1px solid var(--line-2); box-shadow: 0 10px 28px rgba(0,0,0,.5); transition: transform .12s ease, box-shadow .12s ease; }
+.remi-bubble img { width: 30px; height: 30px; object-fit: contain; pointer-events: none; }
+.remi-bubble:hover { transform: scale(1.06); }
+.remi-bubble.on { box-shadow: 0 0 0 2px var(--white), 0 10px 28px rgba(0,0,0,.5); }
+.remi-bubble.live { box-shadow: 0 0 0 3px var(--red), 0 10px 28px rgba(0,0,0,.5); }
+body.dragging .remi-bubble { cursor: grabbing; }
 @media (max-width: 860px) { .form-grid { grid-template-columns: 1fr; } }
 
 .f-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
@@ -319,6 +325,9 @@ svg.xr.marking.tool-erase { cursor: not-allowed; }
 svg.xr.marking.tool-erase [data-mark] { cursor: pointer; }
 svg.xr.marking.tool-erase .mk-pen:hover { stroke-width: 6; opacity: .6; }
 svg.xr.marking.tool-erase .mk-flag:hover { opacity: .5; }
+svg.xr.marking.tool-erase:not(.er-stroke), svg.xr.marking.tool-erase:not(.er-stroke) [data-mark] { cursor: none; }
+svg.xr.marking.tool-erase:not(.er-stroke) .mk-pen:hover { stroke-width: 3; opacity: 1; }
+#ecur { position: fixed; z-index: 40; pointer-events: none; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.6); background: rgba(255,255,255,.12); display: none; }
 svg.xr.marking .mk-pin { cursor: grab; }
 svg.xr.marking .ov-grab { pointer-events: none; }
 .markbar { position: absolute; top: 58px; left: calc(20px + (100% - 400px) / 2); transform: translateX(-50%); z-index: 6;
@@ -333,6 +342,14 @@ svg.xr.marking .ov-grab { pointer-events: none; }
 .markbar .swatch b { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.4); }
 .markbar .swatch.on b { box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px currentColor; color: var(--fg); }
 .markbar .sep { width: 1px; height: 20px; background: var(--line-2); margin: 0 4px; }
+.markbar .er-wrap { position: relative; display: inline-flex; }
+.markbar .er-main { border-radius: 8px 0 0 8px; padding-right: 6px; }
+.markbar .er-caret { min-width: 20px; padding: 0 4px; border-radius: 0 8px 8px 0; }
+.markbar .er-caret svg { width: 12px; height: 12px; }
+.er-menu { position: absolute; top: 38px; left: 0; z-index: 8; min-width: 190px; padding: 4px; border-radius: 10px; background: #141518; border: 1px solid var(--line-2); box-shadow: 0 12px 32px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 2px; }
+.er-menu button { justify-content: flex-start; width: 100%; height: 34px; }
+.er-menu button span { flex: 1; text-align: left; }
+.er-menu button svg { width: 18px; height: 18px; }
 .markbar .done { background: var(--white); color: #0a0a0a; margin-left: 4px; }
 .markbar .done:hover { background: var(--white) !important; color: #0a0a0a !important; }
 .fab.mk.on { background: var(--white); color: #0a0a0a; border-color: var(--white); }
