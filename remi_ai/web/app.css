@@ -243,6 +243,13 @@ textarea.notes { width: 100%; min-height: 70px; resize: vertical; background: rg
 .remi-bubble.on { box-shadow: 0 0 0 2px var(--white), 0 10px 28px rgba(0,0,0,.5); }
 .remi-bubble.live { box-shadow: 0 0 0 3px var(--red), 0 10px 28px rgba(0,0,0,.5); }
 body.dragging .remi-bubble { cursor: grabbing; }
+.remi-bubble { animation: remi-float 3.2s ease-in-out infinite; }
+.remi-bubble::after { content: ''; position: absolute; inset: -1px; border-radius: 50%; border: 1.5px solid #2ec4b6; opacity: 0; animation: remi-halo 3.2s ease-out infinite; pointer-events: none; }
+.remi-bubble:hover, .remi-bubble.on, body.dragging .remi-bubble { animation-play-state: paused; }
+.remi-bubble.on::after, body.dragging .remi-bubble::after { animation: none; }
+@keyframes remi-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }
+@keyframes remi-halo { 0% { opacity: .55; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.45); } }
+@media (prefers-reduced-motion: reduce) { .remi-bubble, .remi-bubble::after { animation: none; } }
 @media (max-width: 860px) { .form-grid { grid-template-columns: 1fr; } }
 
 .f-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
