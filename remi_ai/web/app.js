@@ -7,7 +7,6 @@ const ICON = {
   left: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 5 8l5 5"/></svg>',
   right: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 3 5 5-5 5"/></svg>',
   dots: '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>',
-  pen: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 2.5l2.5 2.5L6 12.5H3.5V10z"/></svg>',
   expand: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3h5v5M8 17H3v-5M17 3l-6 6M3 17l6-6"/></svg>',
   pen: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 3.5l3 3L7 16H4v-3z"/><path d="M11.5 5.5l3 3"/></svg>',
   flag: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 17V3.5"/><path d="M5 4h10l-2.5 3.5L15 11H5"/></svg>',
@@ -74,7 +73,7 @@ async function guard(fn) {
 const SCORE = {
   flat_foot: 'Flat foot model: 93.8% correct on 211 unseen X-rays.',
   heel_spur: 'Heel spur model: 97.5% correct on 595 unseen X-rays.',
-  bunion: 'Bunion angles: within 3° of doctors for 85.0% (HVA) and 95.6% (IMA) of 160 test feet.'
+  bunion: 'Bunion angles: within 3° of doctors for 84.4% (HVA) and 95.6% (IMA) of 160 unseen feet.'
 };
 function findingList(x) {
   const out = [], c = (x && x.results && x.results.checks) || {};
@@ -93,7 +92,7 @@ function prevResult(fd) {
 function sevTag(sev, text) { return `<span class="tag ${sev === 'ok' ? 'green' : 'red'}">${esc(text)}</span>`; }
 
 // Bunion angles have no model probability, so confidence is the chance the grade stays the same given
-// the angle error measured in testing (HVA 85% and IMA 95.6% within 3°, i.e. about 2.1° and 1.5° spread).
+// the angle error measured in testing (HVA 84.4% and IMA 95.6% within 3°, i.e. about 2.1° and 1.5° spread).
 function bandChance(v, sd, cuts) {
   const cdf = z => 1 / (1 + Math.exp(-1.702 * z));
   const lo = [-Infinity, ...cuts].filter(c => c <= v).pop(), hi = [...cuts, Infinity].find(c => c > v);
@@ -222,7 +221,7 @@ function overlaySvg(x, fd, u, main) {
     const [a, b, c, d] = r.box, cx = (a + c) / 2, cy = (b + d) / 2, rx = (c - a) / 2 * 1.05, ry = (d - b) / 2 * 1.05;
     const spur = r.label === 'spur';
     out += `<ellipse class="${spur ? 'ov-red' : 'ov-dash'}" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"/>
-      ${pill(cx - rx, d + 26 * u, spur ? 'Heel spur' : r.label === 'sever' ? "Sever's" : 'No spur seen', u, spur)}`;
+      ${pill(cx - rx, b - 26 * u, spur ? 'Heel spur' : r.label === 'sever' ? "Sever's" : 'No spur seen', u, spur)}`;  // above the heel, so it never covers the arch label below
   }
   if (fd.key === 'bunion') {
     // Big toe bone, first and second long bones: each its own colour; HVA and IMA labels match the line they start from.
@@ -246,7 +245,7 @@ function overlayAll(x, fd, u) {
   if (S.overlay === 0) return heat;
   const others = list.filter(o => !(o.key === fd.key && o.i === fd.i));
   const rest = others.map(o => overlaySvg(x, o, u)).join('');
-  return `${heat}<g opacity="0.6">${rest}</g>${overlaySvg(x, fd, u, true)}`;
+  return `${heat}<g opacity="0.6">${rest}</g>${overlaySvg(x, fd, u, !x.signed)}`;
 }
 /* ---------- markup: pen strokes and flag labels the doctor draws on the X-ray ---------- */
 const MARK_COLORS = [['#ff5a5f', 'Red'], ['#f5b544', 'Amber'], ['#2ec4b6', 'Teal'], ['#7aa7ff', 'Blue'], ['#f6f5f2', 'White']];
@@ -300,11 +299,19 @@ function marksSvg(x) {
 }
 function redrawMarks() { const g = $('#marks'); if (g && S.xray) g.innerHTML = marksSvg(S.xray); }
 function pushUndo() { S.mark.undo.push(JSON.stringify(S.xray.marks || [])); if (S.mark.undo.length > 50) S.mark.undo.shift(); }
-let marksTimer = null;
+// Saves are bundled for a moment while drawing; a pending save is sent at once before another X-ray opens.
+let marksTimer = null, marksPending = null;
+function flushMarks() {
+  clearTimeout(marksTimer); marksTimer = null;
+  const p = marksPending; marksPending = null;
+  return p ? guard(() => call('save_marks', p.id, p.marks)) : Promise.resolve();
+}
 function saveMarks() {
-  const id = S.xid, marks = S.xray.marks;
+  if (S.xray && S.xray.signed) return;
+  if (marksPending && marksPending.id !== S.xid) flushMarks();
+  marksPending = { id: S.xid, marks: S.xray.marks };
   clearTimeout(marksTimer);
-  marksTimer = setTimeout(() => guard(() => call('save_marks', id, marks)), 250);
+  marksTimer = setTimeout(flushMarks, 250);
 }
 function svgPoint(svg, e) {
   const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
@@ -368,6 +375,7 @@ let MDRAG = null;
 document.addEventListener('pointerdown', (e) => {
   if (!S.xray || S.screen !== 'patient') return;
   const svg = e.target.closest && e.target.closest('svg.xr'); if (!svg) return;
+  if (S.xray.signed) return;  // a signed-off X-ray's markings stay exactly as they were signed
   const lab = e.target.closest('[data-flag]'), pin = e.target.closest('[data-pin]'), mk = e.target.closest('[data-mark]');
   if (S.mark.on && S.mark.tool === 'erase') {
     e.preventDefault(); e.stopPropagation();
@@ -544,7 +552,7 @@ function findingPanel() {
   return `${all}
     <div class="card">
       <div class="f-title">${esc(c.title)}</div><div class="f-sub">${esc(c.sub)}</div>
-      <div class="f-tags">${c.tags}${fd.r.edited ? '<span class="tag">Points adjusted by you</span>' : ''}${x.reviewed ? `<span class="tag green">${ICON.check}&nbsp;Reviewed</span>` : ''}</div>
+      <div class="f-tags">${c.tags}${fd.r.edited ? '<span class="tag">Points adjusted by you</span>' : ''}${x.signed ? '<span class="tag">Signed off · locked</span>' : ''}${x.reviewed ? `<span class="tag green">${ICON.check}&nbsp;Reviewed</span>` : ''}</div>
     </div>
     <div class="card">
       <div class="conf-head"><span>${esc(c.bar.label)}</span><b class="num">${c.bar.pct}<small>%</small></b></div>
@@ -607,7 +615,7 @@ function patientScreen() {
     <div class="topleft">
       <button class="icon-btn" data-act="back" aria-label="Back to patients">${ICON.left}</button>
       <div class="crumb"><b>${esc(p.name)}</b><span class="num">${esc(p.patient_id)}</span></div>
-      <div class="views" role="tablist">${xs.map(v => `<button class="${v.id === S.xid ? 'on' : ''}" data-xray="${v.id}">${esc(v.view === 'unsure' ? 'Needs view' : v.view_label)} · ${fmtDate(v.date, true)}<span class="x" data-act="deleteTab" data-del="${v.id}" role="button" aria-label="Remove this X-ray" title="Remove this X-ray">×</span></button>`).join('')}<button class="add" data-act="addXray">+ Add X-ray</button></div>
+      <div class="views" role="tablist">${xs.map(v => `<button class="${v.id === S.xid ? 'on' : ''}" data-xray="${v.id}">${esc(v.view === 'unsure' ? 'Needs view' : v.view_label)} · ${fmtDate(v.date, true)}${v.signed ? '' : `<span class="x" data-act="deleteTab" data-del="${v.id}" role="button" aria-label="Remove this X-ray" title="Remove this X-ray">×</span>`}</button>`).join('')}<button class="add" data-act="addXray">+ Add X-ray</button></div>
     </div>
     ${x ? chips() : ''}
     ${x && S.mark.on ? markBar() : ''}
@@ -623,12 +631,13 @@ function patientScreen() {
           <div class="tabs"><button class="${S.tab === 'finding' ? 'on' : ''}" data-tab="finding">${nFind ? `Finding ${String(S.f + 1).padStart(2, '0')}` : 'Findings'}</button><button class="${S.tab === 'record' ? 'on' : ''}" data-tab="record">Record</button></div>
           ${S.tab === 'finding' && x ? `<div class="navs">${nFind > 1 ? `<button class="icon-btn" data-act="prevF" aria-label="Previous finding">${ICON.left}</button><button class="icon-btn" data-act="nextF" aria-label="Next finding">${ICON.right}</button>` : ''}<button class="icon-btn" data-act="menu" aria-label="More">${ICON.dots}</button></div>` : ''}
         </div>
-        ${S.menu === true ? `<div class="menu"><button data-act="changeView">Change X-ray type</button><button data-act="unreview">${x && x.reviewed ? 'Mark as not reviewed' : 'Mark as reviewed'}</button><button class="danger" data-act="deleteXray">Delete this X-ray</button></div>` : ''}
+        ${S.menu === true ? (x && x.signed ? `<div class="menu"><button disabled>Signed off · this X-ray is locked</button></div>`
+          : `<div class="menu"><button data-act="changeView">Change X-ray type</button><button data-act="unreview">${x && x.reviewed ? 'Mark as not reviewed' : 'Mark as reviewed'}</button><button class="danger" data-act="deleteXray">Delete this X-ray</button></div>`) : ''}
         ${S.tab === 'finding' ? findingPanel() : recordPanel()}
       </div>
     </div>
     <div class="fabs">
-      ${x ? `<button class="fab heat mk${S.mark.on ? ' on' : ''}" data-act="markup" aria-label="Mark up" title="Draw and add labels on the X-ray">${ICON.pen}<span>Mark up</span></button>` : ''}
+      ${x && !x.signed ? `<button class="fab heat mk${S.mark.on ? ' on' : ''}" data-act="markup" aria-label="Mark up" title="Draw and add labels on the X-ray">${ICON.pen}<span>Mark up</span></button>` : ''}
       <button class="fab heat${S.heat ? ' on' : ''}" data-act="heat" aria-label="Heat map" title="Heat map: where the AI looked">${ICON.heat}<span>Heat map</span></button>
       <button class="fab${S.full ? ' on' : ''}" data-act="full" aria-label="Full view" title="Full view">${ICON.expand}</button>
     </div>
@@ -879,9 +888,9 @@ function answer(q) {
     return `I couldn't find a patient called "${m[3]}". Check the spelling or the patient ID.`;
   }
   if (/(patients|patient list|go back|^back)/.test(s)) { goList(); return 'Back to the patient list.'; }
-  if (/accura|how good|trust/.test(s)) return 'In testing: flat foot 93.8% correct on 211 unseen X-rays; heel spur 97.5% on 595; bunion angles within 3° of doctors for 85% (HVA) and 95.6% (IMA) of 160 feet. Always check the result yourself.';
+  if (/accura|how good|trust/.test(s)) return 'In testing: flat foot 93.8% correct on 211 unseen X-rays; heel spur 97.5% on 595; bunion angles within 3° of doctors for 84.4% (HVA) and 95.6% (IMA) of 160 feet; the X-ray check picks the right view for 98.7% of 1,738. Always check the result yourself.';
   if (/explain|what does|mean|angle|hva|ima/.test(s)) return onPatient ? explainFinding() : 'Open a patient and an X-ray, then ask me to explain a finding.';
-  if (/finding/.test(s) && /next/.test(s) && onPatient) { S.f++; S.tab = 'finding'; return 'Next finding.'; }
+  if (/finding/.test(s) && /next/.test(s) && onPatient) { const n = findingList(S.xray).length; if (n < 2) return 'This X-ray has only one finding.'; S.f = (S.f + 1) % n; S.tab = 'finding'; return 'Next finding.'; }
   if (/(what|next|help|guide|how do i|start)/.test(s)) return nextStep();
   if (!onPatient) return 'Open a patient first. Then I can explain findings, switch X-rays, add notes and write referrals.';
   if (/(add|upload|new).*x-?ray|upload/.test(s)) { $('#fileIn').click(); return 'Choose the X-ray file. I will check what kind of X-ray it is and run only the models that fit.'; }
@@ -900,6 +909,7 @@ function answer(q) {
   if (/dark/.test(s)) { S.bright = Math.max(0, S.bright - 10); return 'Darker.'; }
   if (/(heat|map|focus).*\b(off|hide)\b|\b(hide|turn off)\b.*(heat|map)/.test(s)) { S.heat = false; return 'Heat map off.'; }
   if (/heat|map|focus/.test(s)) { S.heat = true; return 'Showing where the AI looked (the warm areas).'; }
+  if (/mark ?up|draw|annotate|eras|rub out/.test(s) && S.xray && S.xray.signed) return 'This X-ray is signed off, so its markings are locked. Add a new X-ray to start a new visit.';
   if (/eraser|erase|rub out/.test(s) && S.xray) {
     const k = /stroke|whole/.test(s) ? 'stroke' : /small|little|tiny/.test(s) ? 's' : /large|big/.test(s) ? 'l' : /medium/.test(s) ? 'm' : S.mark.eraser;
     S.mark.on = true; S.mark.tool = 'erase'; S.mark.eraser = k;
@@ -1041,7 +1051,7 @@ function handsfreePill() {
 
 /* ---------- navigation and actions ---------- */
 async function loadPatients() { S.patients = await call('list_patients', S.q); }
-async function goList() { await guard(async () => { await loadPatients(); S.screen = 'list'; S.pid = null; S.pdata = null; S.xray = null; S.xid = null; S.full = false; render(); }); }
+async function goList() { await flushMarks(); await guard(async () => { await loadPatients(); S.screen = 'list'; S.pid = null; S.pdata = null; S.xray = null; S.xid = null; S.full = false; render(); }); }
 async function reloadPatient() { S.pdata = await call('get_patient', S.pid); render(); }
 async function openPatient(pid) {
   await guard(async () => {
@@ -1049,7 +1059,7 @@ async function openPatient(pid) {
     const xs = allXrays(); S.xid = xs.length ? xs[0].id : null; S.xray = S.xid ? await call('get_xray', S.xid) : null; render();
   });
 }
-async function openXray(id) { await guard(async () => { S.mark.undo = []; S.xid = id; S.f = 0; S.menu = false; S.writing = false; S.busy = ''; S.xray = await call('get_xray', id); render(); }); }
+async function openXray(id) { await flushMarks(); await guard(async () => { S.mark.undo = []; S.mark.on = false; S.xid = id; S.f = 0; S.menu = false; S.writing = false; S.busy = ''; S.xray = await call('get_xray', id); render(); }); }
 function openNewPatient() { guard(async () => { S.modal = { kind: 'patient', nextId: await call('next_patient_id') }; render(); $('#f_name').focus(); }); }
 async function uploadFile(file) {
   if (!file || !S.pid) return;
@@ -1274,11 +1284,11 @@ document.addEventListener('input', (e) => {
   }
   if (e.target.id === 'listSearch') {
     S.q = e.target.value;
-    guard(async () => { await loadPatients(); render(); const i = $('#listSearch'); i.focus(); i.setSelectionRange(S.q.length, S.q.length); });
+    const q = S.q;
+    guard(async () => { const rows = await call('list_patients', q); if (q !== S.q || S.screen !== 'list') return; S.patients = rows; render(); const i = $('#listSearch'); i.focus(); i.setSelectionRange(S.q.length, S.q.length); });
   }
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.target.id === 'topSearch') { S.q = e.target.value; goList(); }
   if (e.key === 'Enter' && e.target.matches('tr[data-open]')) e.target.click();
   if (S.mark.on && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.target.matches('input, textarea')) { e.preventDefault(); doAct('mundo'); return; }
   if (e.key === 'F2' && S.doctor) { e.preventDefault(); toggleMic(); return; }

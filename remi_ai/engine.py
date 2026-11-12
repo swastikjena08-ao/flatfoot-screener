@@ -13,7 +13,7 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 # Repo root when run from source; the bundle folder when packaged with PyInstaller.
 REPO = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,13 +36,13 @@ CHECKS = {
     "heel_spur": {"name": "Heel spur", "view": "side",
                   "score": "97.5% correct on 595 unseen X-rays"},
     "bunion": {"name": "Bunion angles", "view": "top_down",
-               "score": "Within 3° of doctors: HVA 85.0%, IMA 95.6% (160 feet)"},
+               "score": "Within 3° of doctors: HVA 84.4%, IMA 95.6% (160 unseen feet)"},
 }
 
 # Every model in the app, for the account page's model list.
 MODELS = {
     "view_check": {"name": "X-ray check", "what": "Says what kind of X-ray it is and routes it to the right checks",
-                   "view": "Any", "score": "99.1% correct; 83.1% on X-rays from a new hospital"},
+                   "view": "Any", "score": "98.7% correct on 1,738 unseen X-rays"},
     "flat_foot": {"name": "Flat foot", "what": "Flat foot classifier plus heel bone (arch) angle",
                   "view": "Side", "score": CHECKS["flat_foot"]["score"]},
     "heel_spur": {"name": "Heel spur", "what": "Finds the heel, then normal / heel spur / Sever's",
@@ -50,6 +50,16 @@ MODELS = {
     "bunion": {"name": "Bunion angles", "what": "Big toe (HVA) and bone gap (IMA) angles from 6 points per foot",
                "view": "Top-down", "score": CHECKS["bunion"]["score"]},
 }
+
+def load_xray(path_or_file):
+    """Open an X-ray the way the window shows it: turned upright if the file says it was
+    saved rotated (common for photos and some exports), so the models' points line up
+    with the picture on screen."""
+    img = Image.open(path_or_file)
+    img = ImageOps.exif_transpose(img)
+    img.load()
+    return img
+
 
 FLAT_BELOW = 17.7   # heel bone angle under this = flat foot (landmarks.json threshold)
 HIGH_ABOVE = 30.0   # over this = high arch
@@ -250,8 +260,7 @@ class Engine:
     # ---- analysis --------------------------------------------------------------------
     def analyse(self, path, view, progress=None):
         """Run only the checks that fit `view`. Returns a JSON-safe dict."""
-        img = Image.open(path)
-        img.load()
+        img = load_xray(path)
         out = {"view": view, "checks": {}, "skipped": {}}
         wanted = ROUTES.get(view, [])
         ctx = {}  # shared between checks on this X-ray: the heel box helps place the arch angle points

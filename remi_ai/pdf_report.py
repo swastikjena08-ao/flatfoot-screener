@@ -8,9 +8,9 @@ import io
 import os
 
 from fpdf import FPDF
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont
 
-from .engine import CHECKS, VIEWS, findings
+from .engine import CHECKS, VIEWS, findings, load_xray
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOGO = os.path.join(HERE, "web", "img", "remi_wordmark.png")
@@ -76,7 +76,7 @@ def draw_marks(img, marks, s):
 
 def annotated(path, results, size=900, marks=None):
     """The X-ray with Remi's lines drawn on it, as an RGB image (longest side `size`)."""
-    img = ImageOps.exif_transpose(Image.open(path))
+    img = load_xray(path)
     if img.mode.startswith("I") or img.mode == "F":
         import numpy as np
         a = np.asarray(img, np.float32)
@@ -210,7 +210,11 @@ def write_pdf(folder, p, hist, visit, xrays, doctor, signer=None, previous=()):
     width = pdf.w - pdf.l_margin - pdf.r_margin
     img_w = 62
     for x in xrays:
-        img = annotated(x["path"], x["results"], marks=x.get("marks"))
+        try:
+            img = annotated(x["path"], x["results"], marks=x.get("marks"))
+        except OSError:  # the X-ray file was moved or deleted outside Remi: still write the report
+            img = Image.new("RGB", (600, 600), (20, 20, 22))
+            ImageDraw.Draw(img).text((40, 290), "X-ray file not found", fill=(200, 200, 200), font=_label_font(36))
         img_h = img_w * img.height / img.width
         if pdf.get_y() + min(img_h, 90) > pdf.h - 24:
             pdf.add_page()

@@ -1,6 +1,6 @@
-"""Patient report and referral letter, written as HTML files in the patient's folder.
+"""Referral letter, written as an HTML file in the patient's folder.
 
-They open in the default browser, where the doctor can print them or save them as PDF.
+It opens in the default browser, where the doctor can print it or save it as PDF.
 """
 import base64
 import datetime as dt
@@ -93,24 +93,6 @@ def _xray_block(x):
     reviewed = "Reviewed by the doctor" if x["reviewed"] else "Not yet reviewed"
     return (f"<div class='xray'><img src='{src}' alt='X-ray'><div><b>{esc(VIEWS.get(x['view'], x['view']))}</b>"
             f" <span class='small'>· {esc(reviewed)}</span>{lines}{skipped}{scores}</div></div>")
-
-
-def write_report(folder, p, hist, visits, doctor):
-    body = [f"<h1>{esc(p['name'])}</h1><div class='sub'>Remi AI foot X-ray report · "
-            f"{dt.date.today().strftime('%d %b %Y')} · {esc(doctor['name'])} ({esc(doctor['doctor_id'])})</div>",
-            "<h2>Patient and medical history</h2>", _patient_table(p, hist), "<h2>Visits</h2>"]
-    for v in visits:
-        body.append(f"<h3>{esc(nice_date(v['date']))} · {esc(v['label'])}</h3>")
-        if v["note"]:
-            body.append("<p>" + esc(v["note"]).replace("\n", "<br>") + "</p>")
-        body += [_xray_block(x) for x in v["xrays"]]
-    body.append("<p class='small'>Remi AI measurements are suggestions to support the doctor's review. "
-                "They are not a diagnosis.</p>")
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, f"report_{dt.datetime.now():%Y%m%d-%H%M%S}.html")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(_page(f"Report · {p['name']}", "".join(body)))
-    return path
 
 
 def write_referral(folder, p, hist, visits, doctor, to, reason):

@@ -12,6 +12,7 @@ The window drives it with start / poll / stop:
 import json
 import os
 import queue
+import shutil
 import threading
 import time
 import urllib.request
@@ -88,8 +89,17 @@ class Voice:
                     done += len(chunk)
                     if total:
                         self._download = min(99, int(done * 100 / total))
+            # Unpack beside the final folder and move it into place only when complete, so a
+            # download cut off half way never looks like a ready model.
+            unpack = os.path.join(self.dir, MODEL_NAME + ".unpacking")
+            shutil.rmtree(unpack, ignore_errors=True)
             with zipfile.ZipFile(tmp) as z:
-                z.extractall(self.dir)
+                z.extractall(unpack)
+            inner = os.path.join(unpack, MODEL_NAME)
+            final = os.path.join(self.dir, MODEL_NAME)
+            shutil.rmtree(final, ignore_errors=True)  # leftovers of an older, incomplete unpack
+            os.replace(inner if os.path.isdir(inner) else unpack, final)
+            shutil.rmtree(unpack, ignore_errors=True)
         except Exception as e:
             self._error = f"Could not download the speech model ({type(e).__name__}). Check the internet connection."
         finally:
@@ -109,6 +119,8 @@ class Voice:
     # ---- listening -----------------------------------------------------------------
     def start(self, mode="once"):
         with self._lock:
+            if self._stop.is_set() and self._worker is not None:
+                self._worker.join(timeout=1.0)  # a stop is still finishing: let it close the microphone first
             if self._mode is not None:
                 self._mode = mode
                 return self.status()

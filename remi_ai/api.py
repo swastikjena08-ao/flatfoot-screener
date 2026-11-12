@@ -14,13 +14,13 @@ import sys
 import tempfile
 import threading
 
-import numpy as np
-from PIL import Image, ImageOps
-
 import shutil
 
+import numpy as np
+from PIL import Image
+
 from . import pdf_report, report
-from .engine import CHECKS, MODELS, VIEWS, Engine, adjust_points, findings
+from .engine import CHECKS, MODELS, VIEWS, Engine, adjust_points, findings, load_xray
 from .store import DEFAULT_HISTORY, Store
 from .voice import Voice
 
@@ -42,7 +42,7 @@ def safe(fn):
 
 
 def image_data_url(path):
-    img = ImageOps.exif_transpose(Image.open(path))
+    img = load_xray(path)
     if img.mode.startswith("I") or img.mode == "F":  # 16-bit / float exports: stretch to 8-bit
         a = np.asarray(img, np.float32)
         lo, hi = np.percentile(a, (0.5, 99.5))
@@ -91,11 +91,28 @@ class Api:
             except OSError:  # no program to open it with: the file is still saved
                 pass
 
-    def _xray_summary(self, x):
+    def _xray(self, xray_id):
+        x = self._store.xray(xray_id)
+        if x is None:
+            raise ValueError("That X-ray no longer exists.")
+        return x
+
+    def _editable_xray(self, xray_id):
+        """The X-ray, if its visit is still open. A signed-off visit is a closed record: its X-rays,
+        results and markings stay exactly as they were signed."""
+        x = self._xray(xray_id)
+        if self._store.visit(x["visit_id"])["signed_by"]:
+            raise ValueError("This visit is signed off, so its X-rays can't be changed. "
+                             "Anything new you add starts a new visit.")
+        return x
+
+    def _xray_summary(self, x, signed=None):
+        if signed is None:
+            signed = bool(self._store.visit(x["visit_id"])["signed_by"])
         return {"id": x["id"], "view": x["view"], "view_label": VIEWS.get(x["view"], x["view"]),
                 "view_source": x["view_source"], "view_conf": x["view_conf"], "reviewed": bool(x["reviewed"]),
                 "added": x["added"], "findings": [list(f) for f in findings(x["results"])],
-                "analysed": bool(x["results"])}
+                "analysed": bool(x["results"]), "signed": signed}
 
     # ---- start-up and sign-in --------------------------------------------------------
     @safe
@@ -250,7 +267,7 @@ class Api:
             raise ValueError(f"No patient with ID {patient_id}.")
         visits = []
         for v in self._store.visits(patient_id):
-            v["xrays"] = [self._xray_summary(x) for x in self._store.xrays(v["id"])]
+            v["xrays"] = [self._xray_summary(x, bool(v["signed_by"])) for x in self._store.xrays(v["id"])]
             visits.append(v)
         return {"patient": p, "history": self._store.history(patient_id), "visits": visits,
                 "today": dt.date.today().isoformat()}
@@ -279,8 +296,7 @@ class Api:
             with os.fdopen(fd, "wb") as f:
                 f.write(raw)
             try:
-                img = Image.open(tmp)
-                img.load()
+                img = load_xray(tmp)
             except Exception:
                 raise ValueError("That file isn't an image Remi can open. Use a JPG, PNG or TIFF X-ray.")
             view, conf = self._engine.detect_view(img)
@@ -304,7 +320,7 @@ class Api:
         self._need_login()
         if view not in VIEWS:
             raise ValueError(f"Unknown view {view}.")
-        x = self._store.xray(xray_id)
+        x = self._editable_xray(xray_id)
         self._store.set_results(xray_id, self._engine.analyse(x["path"], view), view, "doctor")
         self._store.set_reviewed(xray_id, False)
         return {"ok": True}
@@ -312,9 +328,7 @@ class Api:
     @safe
     def get_xray(self, xray_id):
         self._need_login()
-        x = self._store.xray(xray_id)
-        if x is None:
-            raise ValueError("That X-ray no longer exists.")
+        x = self._xray(xray_id)
         url, w, h = image_data_url(x["path"])
         visit = self._store.visit(x["visit_id"])
         out = self._xray_summary(x)
@@ -331,7 +345,7 @@ class Api:
     def adjust_points(self, xray_id, key, index, points):
         """The doctor dragged the measuring points; save them and return the recomputed finding."""
         self._need_login()
-        x = self._store.xray(xray_id)
+        x = self._editable_xray(xray_id)
         results = x["results"]
         finding = adjust_points(results, key, index, points)
         self._store.set_results(xray_id, results)
@@ -341,8 +355,7 @@ class Api:
     def save_marks(self, xray_id, marks):
         """The doctor's pen strokes and flag labels drawn on this X-ray (in image pixels)."""
         self._need_login()
-        if self._store.xray(xray_id) is None:
-            raise ValueError("That X-ray no longer exists.")
+        self._editable_xray(xray_id)
         clean = []
         for m in marks if isinstance(marks, list) else []:
             if m.get("type") == "pen" and len(m.get("points", [])) >= 2:
@@ -358,12 +371,17 @@ class Api:
     @safe
     def mark_reviewed(self, xray_id, reviewed=True):
         self._need_login()
+        if reviewed:
+            self._xray(xray_id)
+        else:
+            self._editable_xray(xray_id)  # a signed-off X-ray stays reviewed
         self._store.set_reviewed(xray_id, reviewed)
         return {"ok": True}
 
     @safe
     def delete_xray(self, xray_id):
         self._need_login()
+        self._editable_xray(xray_id)
         self._store.delete_xray(xray_id)
         return {"ok": True}
 
@@ -416,6 +434,8 @@ class Api:
         visit, earlier = self._visit_for_report(patient_id)
         if visit["signed_by"]:
             raise ValueError(f"This visit was already signed off by {visit['signed_by']}.")
+        if any(x["view"] == "unsure" for x in visit["xrays"]):
+            raise ValueError("Pick the X-ray type for every X-ray in this visit before signing off.")
         for x in visit["xrays"]:  # signing off means the doctor has reviewed every X-ray in the visit
             if not x["reviewed"]:
                 self._store.set_reviewed(x["id"], True)
