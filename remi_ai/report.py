@@ -1,6 +1,7 @@
 """Referral letter, written as an HTML file in the patient's folder.
 
 It opens in the default browser, where the doctor can print it or save it as PDF.
+(The visit report itself is a PDF: see pdf_report.py.)
 """
 import base64
 import datetime as dt
@@ -8,9 +9,8 @@ import html
 import io
 import os
 
-from PIL import Image, ImageOps
-
 from .engine import CHECKS, VIEWS, findings
+from .imaging import nice_date, open_xray
 
 CSS = """
 body { font-family: "Segoe UI", system-ui, sans-serif; color: #17181a; max-width: 820px; margin: 32px auto;
@@ -37,16 +37,9 @@ def esc(s):
     return html.escape(str(s if s is not None else ""))
 
 
-def nice_date(iso):
-    try:
-        return dt.date.fromisoformat(iso[:10]).strftime("%d %b %Y")
-    except (TypeError, ValueError):
-        return iso or ""
-
-
 def thumb(path, size=440):
     try:
-        img = ImageOps.exif_transpose(Image.open(path)).convert("L")
+        img = open_xray(path).convert("L")
         img.thumbnail((size, size))
         buf = io.BytesIO()
         img.save(buf, "JPEG", quality=82)

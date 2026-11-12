@@ -1,0 +1,2 @@
+# Developer tools: tests (python -m pytest tests -q)
+pytest

@@ -176,6 +176,9 @@ class Store:
         patient_id = patient_id.strip().upper()
         if not patient_id or not name.strip():
             raise ValueError("Patient ID and name are required.")
+        if not all(c.isalnum() or c in "-_" for c in patient_id):
+            # The ID is also the patient's folder name: other characters could make two IDs share a folder.
+            raise ValueError("Patient ID can only use letters, numbers, - and _.")
         if self.patient(patient_id):
             raise ValueError(f"Patient ID {patient_id} already exists.")
         self.db.execute("INSERT INTO patients VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

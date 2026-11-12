@@ -26,7 +26,6 @@ const ICON = {
 
 const S = {
   mark: { on: false, tool: 'pen', color: '#ff5a5f', undo: [], eraser: 'm', emenu: false },
-  newDoctor: false,
   screen: 'loading', info: null, doctor: null, patients: [], q: '',
   pid: null, pdata: null, xid: null, xray: null, f: 0, tab: 'finding',
   full: false, assist: false, menu: false, writing: false, busy: '', modal: null,
@@ -57,9 +56,21 @@ async function call(name, ...args) {
   await bridgeReady();
   let res;
   if (window.pywebview && window.pywebview.api) res = await window.pywebview.api[name](...args);
-  else res = await (await fetch('api/' + name, { method: 'POST', body: JSON.stringify(args) })).json();
+  else res = await (await fetch('api/' + name, { method: 'POST', headers: { 'X-Remi-Token': window.REMI_TOKEN }, body: JSON.stringify(args) })).json();
   if (res && res.error) throw new Error(res.error);
   return res;
+}
+// X-rays in a signed-off visit can't be changed (the server refuses too); say so instead of trying.
+function locked(x) {
+  if (!x || !x.locked) return false;
+  toast(`Signed off by ${x.signed_by}, so this X-ray can't be changed. Anything new you add starts a new visit.`);
+  return true;
+}
+// Reviewing and deleting X-rays is for doctors (the server refuses assistants too).
+function doctorOnly() {
+  if (!isAssistant()) return false;
+  toast('Only a doctor can review or delete X-rays. You can add X-rays and prepare the PDF report.');
+  return true;
 }
 function toast(msg) {
   const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
@@ -283,16 +294,17 @@ function flagBox(m, u) {
 function marksSvg(x) {
   const u = Math.max(x.width, x.height) / 900;
   return (x.marks || []).map((m, i) => {
+    const col = esc(m.color);
     if (m.type === 'pen') {
       const d = m.points.map((p, j) => `${j ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('');
-      return `<path class="mk-pen" data-mark="${i}" d="${d}" stroke="${m.color}"/>`;
+      return `<path class="mk-pen" data-mark="${i}" d="${d}" stroke="${col}"/>`;
     }
     const b = flagBox(m, u), cx = Math.max(b.x, Math.min(m.pin[0], b.x + b.w)), cy = Math.max(b.y, Math.min(m.pin[1], b.y + b.h));
     return `<g class="mk-flag" data-mark="${i}">
-      <line class="mk-lead" x1="${m.pin[0]}" y1="${m.pin[1]}" x2="${cx}" y2="${cy}" stroke="${m.color}"/>
-      <circle class="mk-pin" data-pin="${i}" cx="${m.pin[0]}" cy="${m.pin[1]}" r="${5 * u}" fill="${m.color}"><title>Drag to move the point</title></circle>
+      <line class="mk-lead" x1="${m.pin[0]}" y1="${m.pin[1]}" x2="${cx}" y2="${cy}" stroke="${col}"/>
+      <circle class="mk-pin" data-pin="${i}" cx="${m.pin[0]}" cy="${m.pin[1]}" r="${5 * u}" fill="${col}"><title>Drag to move the point</title></circle>
       <g class="mk-label" data-flag="${i}"><title>Drag to move · double-click to edit</title>
-        <rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${6 * u}" stroke="${m.color}"/>
+        <rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${6 * u}" stroke="${col}"/>
         <text x="${b.x + 0.8 * b.fs}" y="${b.y + b.h / 2 + b.fs * 0.36}" font-size="${b.fs}" fill="${m.text ? '#f6f5f2' : 'rgba(246,245,242,.5)'}">${esc(b.text)}</text></g>
     </g>`;
   }).join('');
@@ -373,7 +385,7 @@ document.addEventListener('pointermove', (e) => {
 });
 let MDRAG = null;
 document.addEventListener('pointerdown', (e) => {
-  if (!S.xray || S.screen !== 'patient') return;
+  if (!S.xray || S.screen !== 'patient' || S.xray.locked) return;
   const svg = e.target.closest && e.target.closest('svg.xr'); if (!svg) return;
   if (S.xray.signed) return;  // a signed-off X-ray's markings stay exactly as they were signed
   const lab = e.target.closest('[data-flag]'), pin = e.target.closest('[data-pin]'), mk = e.target.closest('[data-mark]');
@@ -470,17 +482,16 @@ function lens(image, w, h, region) {
 
 /* ---------- screens ---------- */
 function loginScreen() {
-  const first = !S.info.has_doctors || S.newDoctor;
+  const first = !S.info.has_doctors;  // after the first account, doctors are added from the Account page
   return `<div class="login"><form class="login-card" id="${first ? 'setupForm' : 'loginForm'}">
-    <div class="brand big"><span class="logo"><img src="img/remi_mark.png" alt=""></span><b>Remi</b><span>AI</span></div><div><h2>${!S.info.has_doctors ? 'Create your doctor account' : first ? 'New doctor account' : 'Sign in'}</h2></div>
+    <div class="brand big"><span class="logo"><img src="img/remi_mark.png" alt=""></span><b>Remi</b><span>AI</span></div><div><h2>${first ? 'Create your doctor account' : 'Sign in'}</h2></div>
     ${first ? `<div class="field"><label for="docName">Your name</label><input id="docName" placeholder="Dr. Kavya Rao" required></div>
       <div class="field"><label for="clinic">Clinic</label><input id="clinic" placeholder="Optional"></div>` : ''}
     <div class="field"><label for="docId">Doctor ID</label><input id="docId" autocomplete="username" required placeholder="e.g. DR-2207" value="${first ? '' : esc(S.info.last_doctor_id || '')}"></div>
     <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="${first ? 'new-password' : 'current-password'}" required placeholder="${first ? 'At least 6 characters' : ''}"></div>
     <div class="err" id="loginErr"></div>
     <button class="btn solid" type="submit">${first ? 'Create account' : 'Sign in'}</button>
-    <small>${!S.info.has_doctors ? 'This is the first sign-in on this computer. Patient files are kept here, in your own folder.' : 'Every doctor on this computer sees the same patient list.'}</small>
-    ${S.info.has_doctors ? `<button type="button" class="btn" data-act="toggleNewDoctor" style="justify-content:center">${first ? 'Back to sign in' : 'New doctor account'}</button>` : ''}
+    <small>${first ? 'This is the first sign-in on this computer. Patient files are kept here, in your own folder.' : 'Every doctor on this computer sees the same patient list. New here? A doctor who uses Remi adds you from their Account page.'}</small>
   </form></div>`;
 }
 function findingTags(list) {
@@ -615,14 +626,14 @@ function patientScreen() {
     <div class="topleft">
       <button class="icon-btn" data-act="back" aria-label="Back to patients">${ICON.left}</button>
       <div class="crumb"><b>${esc(p.name)}</b><span class="num">${esc(p.patient_id)}</span></div>
-      <div class="views" role="tablist">${xs.map(v => `<button class="${v.id === S.xid ? 'on' : ''}" data-xray="${v.id}">${esc(v.view === 'unsure' ? 'Needs view' : v.view_label)} · ${fmtDate(v.date, true)}${v.signed ? '' : `<span class="x" data-act="deleteTab" data-del="${v.id}" role="button" aria-label="Remove this X-ray" title="Remove this X-ray">×</span>`}</button>`).join('')}<button class="add" data-act="addXray">+ Add X-ray</button></div>
+      <div class="views" role="tablist">${xs.map(v => `<button class="${v.id === S.xid ? 'on' : ''}" data-xray="${v.id}">${esc(v.view === 'unsure' ? 'Needs view' : v.view_label)} · ${fmtDate(v.date, true)}${isAssistant() || v.signed ? '' : `<span class="x" data-act="deleteTab" data-del="${v.id}" role="button" aria-label="Remove this X-ray" title="Remove this X-ray">×</span>`}</button>`).join('')}<button class="add" data-act="addXray">+ Add X-ray</button></div>
     </div>
     ${x ? chips() : ''}
     ${x && S.mark.on ? markBar() : ''}
     <div class="side">
       <div class="toolbar">
         <button class="btn" data-act="export" title="PDF report of the latest visit">${ICON.export}PDF report</button>
-        <button class="btn" data-act="save" ${x && x.view !== 'unsure' ? '' : 'disabled style="opacity:.5"'}>${x && x.reviewed ? 'Reviewed' : 'Mark reviewed'}</button>
+        <button class="btn" data-act="save" ${x && x.view !== 'unsure' && !isAssistant() ? '' : 'disabled style="opacity:.5"'}${isAssistant() ? ' title="Only a doctor can mark X-rays reviewed"' : ''}>${x && x.reviewed ? 'Reviewed' : 'Mark reviewed'}</button>
         ${signButton()}
         <button class="avatar" data-act="account" title="${esc(S.doctor.name)} · account">${initials(S.doctor.name)}</button>
       </div>
@@ -632,7 +643,7 @@ function patientScreen() {
           ${S.tab === 'finding' && x ? `<div class="navs">${nFind > 1 ? `<button class="icon-btn" data-act="prevF" aria-label="Previous finding">${ICON.left}</button><button class="icon-btn" data-act="nextF" aria-label="Next finding">${ICON.right}</button>` : ''}<button class="icon-btn" data-act="menu" aria-label="More">${ICON.dots}</button></div>` : ''}
         </div>
         ${S.menu === true ? (x && x.signed ? `<div class="menu"><button disabled>Signed off · this X-ray is locked</button></div>`
-          : `<div class="menu"><button data-act="changeView">Change X-ray type</button><button data-act="unreview">${x && x.reviewed ? 'Mark as not reviewed' : 'Mark as reviewed'}</button><button class="danger" data-act="deleteXray">Delete this X-ray</button></div>`) : ''}
+          : `<div class="menu"><button data-act="changeView">Change X-ray type</button>${isAssistant() ? '' : `<button data-act="unreview">${x && x.reviewed ? 'Mark as not reviewed' : 'Mark as reviewed'}</button><button class="danger" data-act="deleteXray">Delete this X-ray</button>`}</div>`) : ''}
         ${S.tab === 'finding' ? findingPanel() : recordPanel()}
       </div>
     </div>
@@ -679,7 +690,7 @@ function referForm() {
 function signOffForm() {
   const v = latestVisit(), n = v ? v.xrays.length : 0;
   return `<div class="modal-back"><div class="modal"><h3>Sign off ${esc(S.pdata.patient.name)}'s visit?</h3>
-    <p>You confirm you have reviewed ${n === 1 ? 'the X-ray' : `all ${n} X-rays`} from ${v ? fmtDate(v.date) : 'this visit'} and Remi's findings. A signed PDF report is saved in the patient's files and a copy in your Downloads folder. Anything added later starts a new visit.</p>
+    <p>You confirm you have reviewed ${n === 1 ? 'the X-ray' : `all ${n} X-rays`} from ${v ? fmtDate(v.date) : 'this visit'} and Remi's findings. A signed PDF report is saved in the patient's files. Anything added later starts a new visit.</p>
     <div class="actions"><button class="btn" data-act="closeModal">Cancel</button><button class="btn solid" data-act="confirmSignOff">Sign off</button></div></div></div>`;
 }
 function confirmForm(text, act) {
@@ -755,7 +766,7 @@ function nextStep() {
     if (!x) return 'Add an X-ray for this patient: press Add X-ray or drop the file on the left.';
     if (x.view === 'unsure') return 'Tell me what kind of X-ray this is using the three buttons on the right, so I run the right checks.';
     if (!findingList(x).length) return 'No checks ran on this X-ray. Add a side or top-down foot X-ray, or change the X-ray type from the menu.';
-    if (!x.reviewed) return 'Look at the lines on the X-ray and the numbers on the right. If you agree, press Mark reviewed. When the visit is done, a doctor presses Sign off to save the signed PDF report.';
+    if (!x.reviewed) return isAssistant() ? 'The lines and numbers are ready for the doctor. A doctor marks each X-ray reviewed and signs off the visit; you can prepare the PDF report.' : 'Look at the lines on the X-ray and the numbers on the right. If you agree, press Mark reviewed. When the visit is done, press Sign off to save the signed PDF report.';
     return latestVisit() && latestVisit().signed_by ? 'This visit is signed off and the PDF report is in the patient\'s files. Anything new you add starts a new visit.' : isAssistant() ? 'This X-ray is reviewed. Press PDF report to prepare the report; the doctor signs it off.' : 'This X-ray is reviewed. Add a note or referral if needed, then press Sign off to save the signed PDF report.';
   }
   return '';
@@ -1076,7 +1087,6 @@ async function doAct(act, el) {
   const x = S.xray;
   switch (act) {
     case 'back': return goList();
-    case 'toggleNewDoctor': S.newDoctor = !S.newDoctor; render(); return;
     case 'logout': if (S.listening || V.handsfree) await stopListening(); await call('logout'); S.doctor = null; S.chat = []; S.assist = false; S.screen = 'login'; S.info = await call('app_info'); render(); return;
     case 'newPatient': return openNewPatient();
     case 'closeModal': S.modal = null; render(); return;
@@ -1086,7 +1096,7 @@ async function doAct(act, el) {
     case 'pickF': S.f = +el.dataset.i; break;
     case 'nextF': { const n = findingList(x).length; S.f = (S.f + 1) % n; break; }
     case 'heat': S.heat = !S.heat; if (S.heat && x && !findingList(x).some(hasHeat)) toast('No heat map for this X-ray. Bunion angles are measured from points, not a map.'); break;
-    case 'markup': S.mark.on = !S.mark.on; S.mark.undo = []; if (S.mark.on) { S.overlay = S.overlay || 1; } break;
+    case 'markup': if (!S.mark.on && locked(x)) return; S.mark.on = !S.mark.on; S.mark.undo = []; if (S.mark.on) { S.overlay = S.overlay || 1; } break;
     case 'mtool': S.mark.emenu = false; S.mark.tool = el.dataset.tool; break;
     case 'emenu': S.mark.emenu = !S.mark.emenu; break;
     case 'meraser': S.mark.eraser = el.dataset.eraser; S.mark.tool = 'erase'; S.mark.emenu = false; break;
@@ -1103,15 +1113,15 @@ async function doAct(act, el) {
     case 'resetVoice': for (const k of Object.keys(VOICE)) delete VOICE[k]; saveVoice(); speakText(VOICE_SAMPLE); break;
     case 'menu': S.menu = S.menu ? false : true; break;
     case 'changeView': S.menu = 'view'; break;
-    case 'unreview': S.menu = false; await guard(async () => { await call('mark_reviewed', x.id, !x.reviewed); x.reviewed = !x.reviewed; await reloadPatient(); }); return;
-    case 'deleteXray': S.menu = false; S.delId = x.id; S.modal = { kind: 'confirm' }; break;
-    case 'deleteTab': S.menu = false; S.delId = +el.dataset.del; S.modal = { kind: 'confirm' }; break;
+    case 'unreview': S.menu = false; if (doctorOnly() || locked(x)) return render(); await guard(async () => { await call('mark_reviewed', x.id, !x.reviewed); x.reviewed = !x.reviewed; await reloadPatient(); }); return;
+    case 'deleteXray': S.menu = false; if (doctorOnly() || locked(x)) return render(); S.delId = x.id; S.modal = { kind: 'confirm' }; break;
+    case 'deleteTab': S.menu = false; if (doctorOnly()) return render(); S.delId = +el.dataset.del; S.modal = { kind: 'confirm' }; break;
     case 'confirmDelete': S.modal = null; await guard(async () => { const del = S.delId; await call('delete_xray', del); S.pdata = await call('get_patient', S.pid); const xs = allXrays(); if (del !== S.xid && xs.some(v => v.id === S.xid)) render(); else if (xs.length) await openXray(xs[0].id); else { S.xray = null; S.xid = null; render(); } toast('X-ray deleted'); }); return;
     case 'note': S.writing = true; render(); { const b = $('#noteBox'); if (b) b.focus(); } return;
     case 'cancelNote': S.writing = false; break;
     case 'saveNote': { const t = ($('#noteBox').value || '').trim(); S.writing = false; if (t) await guard(async () => { await call('add_note', S.pid, t); await reloadPatient(); toast("Note saved to today's visit"); }); render(); return; }
     case 'refer': S.modal = { kind: 'refer' }; render(); $('#r_to').focus(); return;
-    case 'save': if (!x || x.view === 'unsure') return; await guard(async () => { await call('mark_reviewed', x.id, true); x.reviewed = true; await reloadPatient(); toast('Marked as reviewed and saved'); }); return;
+    case 'save': if (!x || x.view === 'unsure' || doctorOnly() || locked(x)) return; await guard(async () => { await call('mark_reviewed', x.id, true); x.reviewed = true; await reloadPatient(); toast('Marked as reviewed and saved'); }); return;
     case 'export': S.busy = 'Making the PDF report…'; render(); await guard(async () => { const r = await call('export_report', S.pid); S.busy = ''; await reloadPatient(); toast(`PDF saved in the patient's files${r.download ? ' and Downloads' : ''}`); }); S.busy = ''; render(); return;
     case 'signOff': S.modal = { kind: 'signoff' }; break;
     case 'confirmSignOff': S.modal = null; S.busy = 'Signing off and writing the PDF report…'; render(); await guard(async () => { const r = await call('sign_off', S.pid); S.busy = ''; await reloadPatient(); if (S.xid) S.xray = await call('get_xray', S.xid); toast(`Signed off. PDF saved in the patient's files${r.download ? ' and Downloads' : ''}`); }); S.busy = ''; render(); return;
@@ -1120,6 +1130,7 @@ async function doAct(act, el) {
     case 'account': await openAccount(); return;
     case 'closeAccount': S.screen = S.prevScreen || 'list'; if (S.screen === 'list') return goList(); break;
     case 'recheckModels': S.models = null; render(); await guard(async () => { S.models = await call('model_status'); }); break;
+    case 'toggleDownloads': await guard(async () => { const r = await call('set_copy_to_downloads', !S.acct.copy_to_downloads); S.acct.copy_to_downloads = r.copy_to_downloads; toast(r.copy_to_downloads ? 'Report PDFs will also be copied to Downloads' : "Report PDFs stay only in the patient's files"); }); break;
     case 'removeAssistant': await guard(async () => { await call('remove_assistant', el.dataset.id); S.acct = await call('account'); toast('Assistant account removed'); }); break;
     case 'openFolder': await guard(() => call('open_patient_folder', S.pid)); return;
     default: return;
@@ -1165,7 +1176,7 @@ function accountScreen() {
     </div>
     <div class="acct-grid">
       <form class="card acct" id="acctForm"><h4>Your details</h4>
-        <dl class="kv"><dt>${doc ? 'Doctor ID' : 'Assistant ID'}</dt><dd class="num">${esc(me.doctor_id)}</dd><dt>Role</dt><dd>${doc ? 'Doctor · can sign off' : 'Assistant · can make reports, not sign off'}</dd>
+        <dl class="kv"><dt>${doc ? 'Doctor ID' : 'Assistant ID'}</dt><dd class="num">${esc(me.doctor_id)}</dd><dt>Role</dt><dd>${doc ? 'Doctor · can sign off' : 'Assistant · can make reports, not review or sign off'}</dd>
         ${!doc && a.supervisor ? `<dt>Works with</dt><dd>${esc(a.supervisor.name)} (${esc(a.supervisor.doctor_id)})</dd>` : ''}<dt>Since</dt><dd class="num">${fmtDate(me.created)}</dd></dl>
         <div class="field"><label for="a_name">Name</label><input id="a_name" value="${esc(me.name)}" required></div>
         <div class="field"><label for="a_clinic">Clinic</label><input id="a_clinic" value="${esc(me.clinic)}"></div>
@@ -1178,8 +1189,19 @@ function accountScreen() {
         <div class="err" id="pwErr"></div><div class="actions"><button class="btn solid" type="submit">Change password</button></div>
       </form>
       ${voiceCard()}
+      <div class="card acct"><h4>Report PDFs</h4>
+        <p class="empty-note" style="margin:0">Every PDF report is kept in the patient's own files. Remi can also put a copy in your Downloads folder, which is outside Remi's data folder, so other programs and people using this Windows account can see it.</p>
+        <div class="actions"><button type="button" class="btn${a.copy_to_downloads ? ' solid' : ''}" data-act="toggleDownloads" aria-pressed="${!!a.copy_to_downloads}">Copy to Downloads: ${a.copy_to_downloads ? 'On' : 'Off'}</button></div>
+      </div>
+      ${doc ? `<form class="card acct" id="doctorForm"><h4>Doctor logins</h4>
+        <p class="empty-note" style="margin:0">Add another doctor who works on this computer. Doctors see every patient here and can review X-rays and sign off visits.</p>
+        <div class="form-grid"><div class="field"><label for="dr_id">Doctor ID</label><input id="dr_id" placeholder="e.g. DR-2208" required></div>
+        <div class="field"><label for="dr_name">Name</label><input id="dr_name" required></div>
+        <div class="field wide"><label for="dr_pw">Password</label><input id="dr_pw" type="password" autocomplete="new-password" placeholder="At least 6 characters" required></div></div>
+        <div class="err" id="drErr"></div><div class="actions"><button class="btn solid" type="submit">Add doctor</button></div>
+      </form>` : ''}
       ${doc ? `<form class="card acct" id="asstForm"><h4>Assistant logins</h4>
-        <p class="empty-note" style="margin:0">Assistants sign in with their own ID. They can add patients, X-rays and make the PDF report, but only you can sign off.</p>
+        <p class="empty-note" style="margin:0">Assistants sign in with their own ID. They can add patients, X-rays and make the PDF report, but only you can review, delete X-rays and sign off.</p>
         ${a.assistants.length ? `<div class="asst-list">${a.assistants.map(x => `<div><b>${esc(x.name)}</b><span class="num">${esc(x.doctor_id)}</span><button type="button" class="btn" data-act="removeAssistant" data-id="${esc(x.doctor_id)}">Remove</button></div>`).join('')}</div>` : ''}
         <div class="form-grid"><div class="field"><label for="as_id">Assistant ID</label><input id="as_id" placeholder="e.g. AS-01" required></div>
         <div class="field"><label for="as_name">Name</label><input id="as_name" required></div>
@@ -1224,6 +1246,7 @@ document.addEventListener('click', (e) => {
   if (d.tab) { S.tab = d.tab; S.menu = false; return render(); }
   if (d.say) return say(d.say);
   if (d.view) {
+    if (locked(S.xray)) return;
     S.busy = 'Running the AI models that fit this X-ray…'; S.menu = false; render();
     return guard(async () => { await call('set_view', S.xid, d.view); S.pdata = await call('get_patient', S.pid); S.busy = ''; await openXray(S.xid); });
   }
@@ -1245,7 +1268,7 @@ document.addEventListener('submit', async (e) => {
     try {
       S.doctor = id === 'loginForm' ? await call('login', $('#docId').value, $('#pw').value)
         : await call('create_doctor', $('#docId').value, $('#docName').value, $('#pw').value, $('#clinic').value);
-      S.newDoctor = false; await goList();
+      await goList();
     } catch (x) { err.textContent = x.message; }
   }
   if (id === 'patientForm') {
@@ -1269,6 +1292,10 @@ document.addEventListener('submit', async (e) => {
     if ($('#pw_new').value !== $('#pw_new2').value) { $('#pwErr').textContent = "The two new passwords don't match."; return; }
     try { await call('change_password', $('#pw_old').value, $('#pw_new').value); render(); toast('Password changed'); }
     catch (x) { $('#pwErr').textContent = x.message; }
+  }
+  if (id === 'doctorForm') {
+    try { const d = await call('create_doctor', $('#dr_id').value, $('#dr_name').value, $('#dr_pw').value, ''); render(); toast(`${d.name} can now sign in with ID ${d.doctor_id}`); }
+    catch (x) { $('#drErr').textContent = x.message; }
   }
   if (id === 'asstForm') {
     try { const a = await call('add_assistant', $('#as_id').value, $('#as_name').value, $('#as_pw').value); S.acct = await call('account'); render(); toast(`${a.name} can now sign in with ID ${a.doctor_id}`); }
@@ -1336,6 +1363,7 @@ function liveAngles(fd) {
 let DRAG = null;
 document.addEventListener('pointerdown', (e) => {
   const h = e.target.closest('.ov-grab'); if (!h || !S.xray || S.mark.on) return;
+  if (S.xray.locked) { e.preventDefault(); locked(S.xray); return; }
   const fd = findingList(S.xray)[S.f]; if (!fd) return;
   e.preventDefault(); e.stopPropagation();
   DRAG = { fd, id: h.dataset.pt, svg: h.ownerSVGElement, moved: false };

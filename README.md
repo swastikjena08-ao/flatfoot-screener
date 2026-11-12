@@ -18,7 +18,11 @@ Patient files are stored on the computer in `%APPDATA%\Remi AI` (one folder per 
 
 To build a standalone `Remi AI.exe`, run `build_exe.bat`; the result is in `dist\Remi AI\`.
 
-Developers can open the same app in a browser with `python -m remi_ai --browser`.
+Developers can open the same app in a browser with `python -m remi_ai --browser`. It only answers this computer, and only the page it served (each run makes a new secret token).
+
+## Accounts
+
+The first person to open Remi on a computer creates the first doctor account. After that, a doctor adds other doctors and assistants from the Account page. Assistants can add patients and X-rays and prepare the PDF report; only a doctor can mark X-rays reviewed, delete them, or sign off a visit. A signed-off visit is closed: its X-rays can't be changed, and anything added later starts a new visit.
 
 ## Voice
 
@@ -37,3 +41,12 @@ Without the X-ray check, Remi asks the doctor what kind of X-ray each upload is.
 
 - `remi_ai/`: the app (`api.py` for everything the window can do, `engine.py` for model routing, `store.py` for patient records, `pdf_report.py` for the signed PDF, `voice.py` for offline speech, `web/` for the interface)
 - `ai_models/`: the trained models, one folder each
+
+## Tests
+
+```
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+.venv\Scripts\python -m pytest tests -q
+```
+
+They need no model weights.

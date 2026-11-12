@@ -83,6 +83,25 @@ def bunion_grade(hva, ima):
     return ["No bunion", "Mild bunion", "Moderate bunion", "Severe bunion"][max(h, i)]
 
 
+SEVERITIES = ["ok", "warn", "alert"]  # least to most serious
+
+
+def worst(severities):
+    return max(severities, key=SEVERITIES.index)
+
+
+def flat_severity(category):
+    return "ok" if category in ("Normal arch", "Not measured") else "warn"
+
+
+def bunion_severity(grade):
+    if grade == "No bunion":
+        return "ok"
+    if grade == "Mild bunion":
+        return "warn"
+    return "alert"
+
+
 def _acute_angle(a0, a1, b0, b1):
     """Acute angle in degrees between line a0-a1 and line b0-b1 (same as ai_models/bunion)."""
     v1 = (a1[0] - a0[0], a1[1] - a0[1])
@@ -107,7 +126,7 @@ def adjust_points(results, key, index, points):
         cat = flat_category(angle) if 0 <= angle <= 45 else "Not measured"
         r.update(points={**r["points"], "L10": p10, "L11": p11}, angle=angle, category=cat, tilt=0,
                  reason="" if cat != "Not measured" else "The heel points don't give a usable angle.",
-                 severity="ok" if cat in ("Normal arch", "Not measured") else "warn", edited=True)
+                 severity=flat_severity(cat), edited=True)
         return r
     if key == "bunion" and "bunion" in checks:
         feet = checks["bunion"]["feet"]
@@ -118,9 +137,8 @@ def adjust_points(results, key, index, points):
         hva = round(_acute_angle(p[0], p[1], p[2], p[3]), 1)
         ima = round(_acute_angle(p[2], p[3], p[4], p[5]), 1)
         grade = bunion_grade(hva, ima)
-        f.update(points=p, hva=hva, ima=ima, grade=grade, edited=True,
-                 severity="ok" if grade == "No bunion" else "warn" if grade == "Mild bunion" else "alert")
-        checks["bunion"]["severity"] = max((x["severity"] for x in feet), key=["ok", "warn", "alert"].index)
+        f.update(points=p, hva=hva, ima=ima, grade=grade, edited=True, severity=bunion_severity(grade))
+        checks["bunion"]["severity"] = worst(x["severity"] for x in feet)
         return f
     raise ValueError("That finding has no points to adjust.")
 
@@ -315,7 +333,7 @@ class Engine:
             "reason": reason,
             "points": {k: [float(v[0]), float(v[1])] for k, v in (r["points"] or {}).items()},
             "heatmap": _round_map(r["heatmap"]),
-            "severity": "ok" if cat in ("Normal arch", "Not measured") else "warn",
+            "severity": flat_severity(cat),
         }
 
     def _run_heel_spur(self, model, img, ctx):
@@ -348,9 +366,8 @@ class Engine:
             grade = bunion_grade(f["hva"], f["ima"])
             out.append({"side": f["side"], "hva": round(float(f["hva"]), 1), "ima": round(float(f["ima"]), 1),
                         "points": [[float(x), float(y)] for x, y in f["points"]], "box": list(f["box"]),
-                        "grade": grade,
-                        "severity": "ok" if grade == "No bunion" else "warn" if grade == "Mild bunion" else "alert"})
-        return {"feet": out, "severity": max((f["severity"] for f in out), key=["ok", "warn", "alert"].index)}
+                        "grade": grade, "severity": bunion_severity(grade)})
+        return {"feet": out, "severity": worst(f["severity"] for f in out)}
 
 
 def findings(results):

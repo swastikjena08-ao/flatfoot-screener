@@ -10,7 +10,8 @@ import os
 from fpdf import FPDF
 from PIL import Image, ImageDraw, ImageFont
 
-from .engine import CHECKS, VIEWS, findings, load_xray
+from .engine import CHECKS, VIEWS, findings
+from .imaging import nice_date, open_xray
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOGO = os.path.join(HERE, "web", "img", "remi_wordmark.png")
@@ -25,13 +26,6 @@ FONT_CHOICES = [
     (r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf"),
     ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
 ]
-
-
-def nice_date(iso):
-    try:
-        return dt.date.fromisoformat(iso[:10]).strftime("%d %b %Y")
-    except (TypeError, ValueError):
-        return iso or ""
 
 
 def _label_font(px):
@@ -76,13 +70,7 @@ def draw_marks(img, marks, s):
 
 def annotated(path, results, size=900, marks=None):
     """The X-ray with Remi's lines drawn on it, as an RGB image (longest side `size`)."""
-    img = load_xray(path)
-    if img.mode.startswith("I") or img.mode == "F":
-        import numpy as np
-        a = np.asarray(img, np.float32)
-        lo, hi = np.percentile(a, (0.5, 99.5))
-        img = Image.fromarray((np.clip((a - lo) / max(hi - lo, 1), 0, 1) * 255).astype(np.uint8))
-    img = img.convert("RGB")
+    img = open_xray(path).convert("RGB")
     w0, h0 = img.size
     img.thumbnail((size, size))
     s = img.width / w0
