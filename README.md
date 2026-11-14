@@ -65,3 +65,7 @@ Without the X-ray check, Remi asks the doctor what kind of X-ray each upload is.
 ```
 
 They need no model weights.
+
+## Licence
+
+The code is released under the [MIT License](LICENSE). The licence covers the code only: the datasets used for training and any model weights keep their own terms, listed in each model folder's README (for example, the bunion dataset is CC BY-NC-ND 4.0 and is not included here). Remi supports a doctor's review and is not a medical device or a diagnosis.
