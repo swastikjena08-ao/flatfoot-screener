@@ -1,5 +1,7 @@
 # Remi AI
 
+Built for DSH Hacks V2 (AI x Healthcare).
+
 A Windows desktop assistant that reads foot X-rays for doctors. A doctor signs in, opens a patient's record and adds an X-ray. Remi first checks what kind of X-ray it is, then runs only the AI models that fit that view:
 
 | X-ray | Checks |
@@ -9,6 +11,19 @@ A Windows desktop assistant that reads foot X-rays for doctors. A doctor signs i
 | Anything else | None; the X-ray is kept but not measured |
 
 Each patient has a record with their first-visit history, medical history, visits, notes and every X-ray, so results can be compared over time. An assistant panel (Ask Remi) guides the doctor through each step by text or voice.
+
+## Tested accuracy
+
+Every model was tested on X-rays it never saw in training:
+
+| Check | Result |
+|---|---|
+| X-ray check (which view) | 98.7% correct |
+| Flat foot | 93.8% correct |
+| Heel spur | 97.5% correct |
+| Bunion angles (within 3° of doctors) | HVA 84.4%, IMA 95.6% |
+
+Remi measures and flags; the doctor reviews and signs off. It is not a diagnosis.
 
 ## Run it
 
