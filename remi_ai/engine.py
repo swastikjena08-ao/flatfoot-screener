@@ -1,0 +1,388 @@
+"""Runs the trained models in ai_models/ on one X-ray.
+
+Each model only runs on the X-ray view it was trained for:
+    side (lateral)   -> flat foot, heel spur
+    top-down (AP)    -> bunion angles
+    anything else    -> nothing, with the reason recorded
+
+The view comes from the X-ray check model (ai_models/view_check) when its weights are
+installed; otherwise the doctor picks it when adding the X-ray.
+"""
+import math
+import os
+import sys
+
+import numpy as np
+from PIL import Image, ImageOps
+
+# Repo root when run from source; the bundle folder when packaged with PyInstaller.
+REPO = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+MODELS_DIR = os.environ.get("REMI_MODELS", os.path.join(REPO, "ai_models"))
+
+VIEWS = {
+    "side": "Side view",
+    "top_down": "Top-down view",
+    "oblique": "Angled view",
+    "not_foot": "Not a foot X-ray",
+    "unsure": "Unclear view",
+}
+
+# Which checks fit which view.
+ROUTES = {"side": ["flat_foot", "heel_spur"], "top_down": ["bunion"]}
+
+CHECKS = {
+    "flat_foot": {"name": "Flat foot", "view": "side",
+                  "score": "93.8% correct on 211 unseen X-rays"},
+    "heel_spur": {"name": "Heel spur", "view": "side",
+                  "score": "97.5% correct on 595 unseen X-rays"},
+    "bunion": {"name": "Bunion angles", "view": "top_down",
+               "score": "Within 3° of doctors: HVA 84.4%, IMA 95.6% (160 unseen feet)"},
+}
+
+# Every model in the app, for the account page's model list.
+MODELS = {
+    "view_check": {"name": "X-ray check", "what": "Says what kind of X-ray it is and routes it to the right checks",
+                   "view": "Any", "score": "98.7% correct on 1,738 unseen X-rays"},
+    "flat_foot": {"name": "Flat foot", "what": "Flat foot classifier plus heel bone (arch) angle",
+                  "view": "Side", "score": CHECKS["flat_foot"]["score"]},
+    "heel_spur": {"name": "Heel spur", "what": "Finds the heel, then normal / heel spur / Sever's",
+                  "view": "Side", "score": CHECKS["heel_spur"]["score"]},
+    "bunion": {"name": "Bunion angles", "what": "Big toe (HVA) and bone gap (IMA) angles from 6 points per foot",
+               "view": "Top-down", "score": CHECKS["bunion"]["score"]},
+}
+
+def load_xray(path_or_file):
+    """Open an X-ray the way the window shows it: turned upright if the file says it was
+    saved rotated (common for photos and some exports), so the models' points line up
+    with the picture on screen."""
+    img = Image.open(path_or_file)
+    img = ImageOps.exif_transpose(img)
+    img.load()
+    return img
+
+
+FLAT_BELOW = 17.7   # heel bone angle under this = flat foot (landmarks.json threshold)
+HIGH_ABOVE = 30.0   # over this = high arch
+
+
+def flat_category(angle):
+    if angle is None:
+        return "Not measured"
+    if angle < FLAT_BELOW:
+        return "Flat foot"
+    if angle > HIGH_ABOVE:
+        return "High arch"
+    return "Normal arch"
+
+
+def bunion_grade(hva, ima):
+    """Common grading: HVA <15 normal, 15-20 mild, 20-40 moderate, >40 severe;
+    IMA <9 normal, 9-11 mild, 11-16 moderate, >16 severe. The worse of the two wins."""
+    h = 0 if hva < 15 else 1 if hva <= 20 else 2 if hva <= 40 else 3
+    i = 0 if ima < 9 else 1 if ima <= 11 else 2 if ima <= 16 else 3
+    return ["No bunion", "Mild bunion", "Moderate bunion", "Severe bunion"][max(h, i)]
+
+
+SEVERITIES = ["ok", "warn", "alert"]  # least to most serious
+
+
+def worst(severities):
+    return max(severities, key=SEVERITIES.index)
+
+
+def flat_severity(category):
+    return "ok" if category in ("Normal arch", "Not measured") else "warn"
+
+
+def bunion_severity(grade):
+    if grade == "No bunion":
+        return "ok"
+    if grade == "Mild bunion":
+        return "warn"
+    return "alert"
+
+
+def _acute_angle(a0, a1, b0, b1):
+    """Acute angle in degrees between line a0-a1 and line b0-b1 (same as ai_models/bunion)."""
+    v1 = (a1[0] - a0[0], a1[1] - a0[1])
+    v2 = (b1[0] - b0[0], b1[1] - b0[1])
+    n = math.hypot(*v1) * math.hypot(*v2)
+    if n == 0:
+        return 0.0
+    t = math.degrees(math.acos(max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / n))))
+    return min(t, 180 - t)
+
+
+def adjust_points(results, key, index, points):
+    """The doctor moved the measuring points: store them and recompute the angles and grade."""
+    checks = results.get("checks", {})
+    if key == "flat_foot" and "flat_foot" in checks:
+        r = checks["flat_foot"]
+        if not isinstance(points, dict) or not {"L10", "L11"} <= set(points):
+            raise ValueError("Flat foot needs both heel points.")
+        p10, p11 = [float(v) for v in points["L10"]], [float(v) for v in points["L11"]]
+        dx = p11[0] - p10[0]
+        angle = round(math.degrees(math.atan2(p11[1] - p10[1], -dx if r["left"] else dx)), 1)
+        cat = flat_category(angle) if 0 <= angle <= 45 else "Not measured"
+        r.update(points={**r["points"], "L10": p10, "L11": p11}, angle=angle, category=cat, tilt=0,
+                 reason="" if cat != "Not measured" else "The heel points don't give a usable angle.",
+                 severity=flat_severity(cat), edited=True)
+        return r
+    if key == "bunion" and "bunion" in checks:
+        feet = checks["bunion"]["feet"]
+        if not 0 <= int(index) < len(feet) or len(points) != 6:
+            raise ValueError("Bunion needs six points.")
+        f = feet[int(index)]
+        p = [[float(a), float(b)] for a, b in points]
+        hva = round(_acute_angle(p[0], p[1], p[2], p[3]), 1)
+        ima = round(_acute_angle(p[2], p[3], p[4], p[5]), 1)
+        grade = bunion_grade(hva, ima)
+        f.update(points=p, hva=hva, ima=ima, grade=grade, edited=True, severity=bunion_severity(grade))
+        checks["bunion"]["severity"] = worst(x["severity"] for x in feet)
+        return f
+    raise ValueError("That finding has no points to adjust.")
+
+
+def _points_fit_heel(r, box, tilt=0):
+    """True when the arch angle points sit where they should relative to the heel box:
+    the lower point (L11) on the underside of the heel, the other one level with the heel
+    and not far in front of it, and the angle in a range a standing foot can show."""
+    pts, angle = r.get("points"), r.get("angle")
+    if not pts or angle is None or not (0 <= angle <= 45):
+        return False
+    x0, y0, x1, y1 = box
+    bw, bh = max(x1 - x0, 1), max(y1 - y0, 1)
+    cx, cy = (x0 + x1) / 2, y0 + 0.8 * bh  # turn the points into the frame the angle was measured in
+    ca, sa = math.cos(math.radians(tilt)), math.sin(math.radians(tilt))
+    pts = {k: (cx + (x - cx) * ca + (y - cy) * sa, cy - (x - cx) * sa + (y - cy) * ca) for k, (x, y) in pts.items()}
+    rel = {k: ((x - x0) / bw, (y - y0) / bh) for k, (x, y) in pts.items()}
+    (ax, ay), (bx, by) = rel["L10"], rel["L11"]
+    return -0.2 <= bx <= 1.2 and 0.5 <= by <= 1.25 and -0.8 <= ax <= 1.8 and 0.3 <= ay <= 1.15
+
+
+def _heel_framed_predictions(model, img, box):
+    """Flat foot predictions on crops framed like the training X-rays around the heel box,
+    mapped back to the full image.
+
+    The landmark model only saw standing feet with the sole level, so the image is also turned
+    around the heel in steps (foot not level, e.g. X-rays taken lying down). Each result carries
+    "tilt": the turn in degrees that made the sole level; the angle is measured against that sole
+    line rather than the image edge, so it is an estimate when tilt is not 0."""
+    from flat_foot.predict import cam_on_image
+    x0, y0, x1, y1 = box
+    d = 0.75 * max(x1 - x0, y1 - y0)            # typical length of the arch angle line
+    w, h = 8 * d, 5.4 * d                         # training X-ray proportions (flat_foot.predict.foot_box)
+    hx, hy = (x0 + x1) / 2, y0 + 0.8 * (y1 - y0)  # underside of the heel
+    for tilt in (0, 15, -15, 30, -30, 45, -45, 60, -60):
+        work = img if tilt == 0 else img.rotate(tilt, center=(hx, hy), resample=Image.BILINEAR)
+        ca, sa = math.cos(math.radians(tilt)), math.sin(math.radians(tilt))
+        for across in (0.8, 0.2):                 # heel on the right (toes left), then on the left
+            cx0, cy0 = hx - across * w, hy - 0.83 * h
+            crop_box = tuple(round(v) for v in (cx0, cy0, cx0 + w, cy0 + h))
+            r = model.predict(work.crop(crop_box))
+            if r["points"]:
+                pts = {}
+                for k, (x, y) in r["points"].items():  # crop -> turned image -> original image
+                    u, v = x + crop_box[0] - hx, y + crop_box[1] - hy
+                    pts[k] = (hx + u * ca - v * sa, hy + u * sa + v * ca)
+                r["points"] = pts
+            r["tilt"] = tilt
+            r["heatmap"] = cam_on_image(np.asarray(r["heatmap"]), crop_box, *img.size) if tilt == 0 \
+                else np.zeros((2, 2), np.float32)
+            yield r
+
+
+def _round_map(a, digits=3):
+    return np.round(np.asarray(a, dtype=float), digits).tolist()
+
+
+class Engine:
+    def __init__(self, models_dir=MODELS_DIR):
+        self.dir = models_dir
+        if models_dir not in sys.path:
+            sys.path.insert(0, models_dir)
+        self._models = {}
+        self.errors = {}
+
+    # ---- loading -----------------------------------------------------------------
+    def _load(self, key):
+        if key in self._models:
+            return self._models[key]
+        model = None
+        try:
+            folder = os.path.join(self.dir, key)
+            if key == "flat_foot":
+                from flat_foot.predict import FlatFoot
+                model = FlatFoot(folder)
+            elif key == "heel_spur":
+                from heel_spur.predict import HeelSpur
+                model = HeelSpur(folder)
+            elif key == "bunion":
+                from bunion.predict import Bunion
+                model = Bunion(folder)
+            elif key == "view_check":
+                from view_check.predict import ViewCheck
+                model = ViewCheck(folder)
+        except Exception as e:  # missing weights or packages: the check is reported as unavailable
+            self.errors[key] = f"{type(e).__name__}: {e}"
+            model = None
+        self._models[key] = model
+        return model
+
+    def available(self, key):
+        return self._load(key) is not None
+
+    def status(self):
+        """{key: True/False} for every model, for the settings and assistant panels."""
+        return {k: self.available(k) for k in ("view_check", *CHECKS)}
+
+    def health(self):
+        """Load every model and run it once on a test image, so the app can show which ones work."""
+        import time
+        test = Image.fromarray(np.tile(np.linspace(30, 220, 640, dtype=np.uint8), (480, 1)))
+        out = {}
+        for key, info in MODELS.items():
+            row = {**info, "key": key, "loaded": False, "ok": False, "ms": None, "problem": ""}
+            model = self._load(key)
+            if model is None:
+                row["problem"] = "Model files not installed" if "No such file" in self.errors.get(key, "") or \
+                    "not found" in self.errors.get(key, "").lower() else (self.errors.get(key) or "Could not load")
+                out[key] = row
+                continue
+            row["loaded"] = True
+            t = time.perf_counter()
+            try:
+                if key == "bunion":
+                    model.predict(np.asarray(test), boxes={"right": (0.0, 0.0, 640.0, 480.0)})
+                else:
+                    model.predict(test)
+                row["ok"] = True
+            except Exception as e:
+                row["problem"] = f"Test run failed ({type(e).__name__})"
+            row["ms"] = round((time.perf_counter() - t) * 1000)
+            out[key] = row
+        if "bunion" in out and out["bunion"]["ok"]:
+            out["bunion"]["finder"] = getattr(self._load("bunion"), "finder", None) is not None
+        return out
+
+    # ---- X-ray type check ------------------------------------------------------------
+    def detect_view(self, img):
+        """(view, confidence) from the X-ray check, or (None, None) if it isn't installed."""
+        vc = self._load("view_check")
+        if vc is None:
+            return None, None
+        r = vc.predict(img)
+        conf = max(r["probs"].values())
+        return r["view"], conf
+
+    # ---- analysis --------------------------------------------------------------------
+    def analyse(self, path, view, progress=None):
+        """Run only the checks that fit `view`. Returns a JSON-safe dict."""
+        img = load_xray(path)
+        out = {"view": view, "checks": {}, "skipped": {}}
+        wanted = ROUTES.get(view, [])
+        ctx = {}  # shared between checks on this X-ray: the heel box helps place the arch angle points
+        for key in sorted(CHECKS, key=lambda k: k != "heel_spur"):
+            info = CHECKS[key]
+            if key not in wanted:
+                need = VIEWS[info["view"]].lower()
+                out["skipped"][key] = (f"Not run: needs a {need}" if view in ROUTES
+                                       else f"Not run: {VIEWS.get(view, view).lower()}")
+                continue
+            model = self._load(key)
+            if model is None:
+                out["skipped"][key] = "Model files not installed"
+                continue
+            if progress:
+                progress(info["name"])
+            try:
+                out["checks"][key] = getattr(self, "_run_" + key)(model, img, ctx)
+            except Exception as e:
+                out["skipped"][key] = f"Could not read this X-ray ({type(e).__name__})"
+        out["checks"] = {k: out["checks"][k] for k in CHECKS if k in out["checks"]}
+        return out
+
+    def _run_flat_foot(self, model, img, ctx):
+        r = model.predict(img)
+        box = ctx.get("heel_box")
+        reason = ""
+        fits = box is None or _points_fit_heel(r, box)
+        if not fits:
+            # The landmark model was trained on standing whole-foot X-rays framed one way. When its
+            # points miss the heel the heel spur model found, retry on crops framed like those
+            # X-rays around that heel, turning the image if the foot is not level.
+            for retry in _heel_framed_predictions(model, img, box):
+                if _points_fit_heel(retry, box, retry["tilt"]):
+                    r, fits = retry, True
+                    break
+        angle = None if r["angle"] is None else round(float(r["angle"]), 1)
+        cat = flat_category(angle)
+        if not fits or angle is None or not (0 <= angle <= 45):
+            cat, reason = "Not measured", "Remi could not find the heel points reliably on this X-ray."
+        elif r.get("tilt"):
+            # The heel points were found, but the arch angle is measured against the ground, which
+            # this X-ray doesn't show (foot not standing level), so no flat foot verdict is given.
+            cat, reason = "Not measured", ("The foot is not standing level in this X-ray, so the arch "
+                                           "angle can't be measured. It needs a standing side view.")
+        return {
+            "angle": angle,
+            "category": cat,
+            "p_flat": round(float(r["p_flat"]), 4),
+            "left": bool(r["left"]),
+            "tilt": int(r.get("tilt", 0)),
+            "reason": reason,
+            "points": {k: [float(v[0]), float(v[1])] for k, v in (r["points"] or {}).items()},
+            "heatmap": _round_map(r["heatmap"]),
+            "severity": flat_severity(cat),
+        }
+
+    def _run_heel_spur(self, model, img, ctx):
+        r = model.predict(img)
+        ctx["heel_box"] = r["box"]
+        label = r["label"]
+        headline = {"normal": "No heel spur", "spur": "Heel spur found",
+                    "sever": "Heel growth plate irritation (Sever's)"}[label]
+        return {
+            "label": label,
+            "headline": headline,
+            "probs": {k: round(v, 4) for k, v in r["probs"].items()},
+            "box": list(r["box"]),
+            "crop_box": list(r["crop_box"]),
+            "heatmap": _round_map(r["heatmap"]),
+            "severity": "ok" if label == "normal" else "alert",
+        }
+
+    def _run_bunion(self, model, img, ctx):
+        gray = np.asarray(img.convert("L"))
+        if model.finder is not None:
+            feet = model.predict(gray)
+        else:
+            h, w = gray.shape
+            feet = model.predict(gray, boxes={"right": (0.0, 0.0, float(w), float(h))})
+        if not feet:
+            raise ValueError("no foot found")
+        out = []
+        for f in feet:
+            grade = bunion_grade(f["hva"], f["ima"])
+            out.append({"side": f["side"], "hva": round(float(f["hva"]), 1), "ima": round(float(f["ima"]), 1),
+                        "points": [[float(x), float(y)] for x, y in f["points"]], "box": list(f["box"]),
+                        "grade": grade, "severity": bunion_severity(grade)})
+        return {"feet": out, "severity": worst(f["severity"] for f in out)}
+
+
+def findings(results):
+    """Short list of (title, detail, severity) for a result dict, for lists and the report."""
+    out = []
+    c = results.get("checks", {})
+    if "flat_foot" in c:
+        f = c["flat_foot"]
+        measured = f["angle"] is not None and f["category"] != "Not measured"
+        detail = f"Heel bone angle {f['angle']}°" if measured else "Angle could not be measured"
+        out.append((f["category"], detail, f["severity"]))
+    if "heel_spur" in c:
+        h = c["heel_spur"]
+        out.append((h["headline"], f"{h['probs'][h['label']] * 100:.0f}% model confidence", h["severity"]))
+    if "bunion" in c:
+        for f in c["bunion"]["feet"]:
+            out.append((f"{f['grade']} ({f['side']})", f"HVA {f['hva']}°, IMA {f['ima']}°", f["severity"]))
+    return out

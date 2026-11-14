@@ -1,0 +1,3 @@
+# Offline voice for Ask Remi (optional: the app runs without it)
+vosk
+sounddevice

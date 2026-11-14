@@ -1,0 +1,10 @@
+{
+ "classes": [
+  "side",
+  "top_down",
+  "oblique",
+  "not_foot"
+ ],
+ "size": 224,
+ "min_confidence": 0.6
+}
