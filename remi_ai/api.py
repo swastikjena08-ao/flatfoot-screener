@@ -9,22 +9,37 @@ import datetime as dt
 import functools
 import io
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import threading
 
-import numpy as np
-from PIL import Image, ImageOps
-
-import shutil
-
 from . import pdf_report, report
-from .engine import CHECKS, MODELS, VIEWS, Engine, adjust_points, findings
+from .engine import CHECKS, MODELS, VIEWS, Engine, adjust_points, findings, load_xray
+from .imaging import open_xray
 from .store import DEFAULT_HISTORY, Store
 from .voice import Voice
 
 DISPLAY_MAX = 1800  # longest side of the copy sent to the window
+MARK_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+DEFAULT_MARK_COLOR = "#ff5a5f"
+
+
+def mark_color(c):
+    """Only plain #rrggbb colours are stored: the window puts them straight into SVG attributes."""
+    c = str(c or "")
+    return c if MARK_COLOR.fullmatch(c) else DEFAULT_MARK_COLOR
+
+
+def _errors_as_json(fn, self, args):
+    try:
+        return fn(self, *args)
+    except (ValueError, PermissionError, FileNotFoundError) as e:
+        return {"error": str(e)}
+    except Exception as e:  # unexpected: still keep the window alive
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 def safe(fn):
@@ -32,22 +47,21 @@ def safe(fn):
     @functools.wraps(fn)
     def wrapper(self, *args):
         with self._lock:
-            try:
-                return fn(self, *args)
-            except (ValueError, PermissionError, FileNotFoundError) as e:
-                return {"error": str(e)}
-            except Exception as e:  # unexpected: still keep the window alive
-                return {"error": f"{type(e).__name__}: {e}"}
+            return _errors_as_json(fn, self, args)
+    return wrapper
+
+
+def safe_unlocked(fn):
+    """Like safe, but without the app lock. For voice only: it has its own locks and the window polls it
+    several times a second, so it must not wait behind an X-ray being analysed."""
+    @functools.wraps(fn)
+    def wrapper(self, *args):
+        return _errors_as_json(fn, self, args)
     return wrapper
 
 
 def image_data_url(path):
-    img = ImageOps.exif_transpose(Image.open(path))
-    if img.mode.startswith("I") or img.mode == "F":  # 16-bit / float exports: stretch to 8-bit
-        a = np.asarray(img, np.float32)
-        lo, hi = np.percentile(a, (0.5, 99.5))
-        img = Image.fromarray((np.clip((a - lo) / max(hi - lo, 1), 0, 1) * 255).astype(np.uint8))
-    img = img.convert("L")
+    img = open_xray(path).convert("L")
     w, h = img.size
     img.thumbnail((DISPLAY_MAX, DISPLAY_MAX))
     buf = io.BytesIO()
@@ -82,7 +96,22 @@ class Api:
     def _need_doctor(self):
         self._need_login()
         if self._doctor.get("role") == "assistant":
-            raise PermissionError("Only a doctor can do this. Assistant accounts can prepare reports but not sign off.")
+            raise PermissionError("Only a doctor can do this. Assistant accounts can add patients and X-rays and "
+                                  "prepare reports, but not review, delete or sign off.")
+
+    def _editable_xray(self, xray_id):
+        """The X-ray, if it can still be changed. A signed-off visit is the signed report's record, so it is closed."""
+        x = self._store.xray(xray_id)
+        if x is None:
+            raise ValueError("That X-ray no longer exists.")
+        signer = self._store.visit(x["visit_id"])["signed_by"]
+        if signer:
+            raise PermissionError(f"This X-ray is in a visit signed off by {signer}, so it can't be changed. "
+                                  "Anything new you add starts a new visit.")
+        return x
+
+    def _copy_to_downloads(self):
+        return self._store.setting("copy_to_downloads", True)  # on unless the doctor turned it off
 
     def _open(self, path):
         if self._open_files:
@@ -91,11 +120,19 @@ class Api:
             except OSError:  # no program to open it with: the file is still saved
                 pass
 
-    def _xray_summary(self, x):
+    def _xray(self, xray_id):
+        x = self._store.xray(xray_id)
+        if x is None:
+            raise ValueError("That X-ray no longer exists.")
+        return x
+
+    def _xray_summary(self, x, signed=None):
+        if signed is None:
+            signed = bool(self._store.visit(x["visit_id"])["signed_by"])
         return {"id": x["id"], "view": x["view"], "view_label": VIEWS.get(x["view"], x["view"]),
                 "view_source": x["view_source"], "view_conf": x["view_conf"], "reviewed": bool(x["reviewed"]),
                 "added": x["added"], "findings": [list(f) for f in findings(x["results"])],
-                "analysed": bool(x["results"])}
+                "analysed": bool(x["results"]), "signed": signed}
 
     # ---- start-up and sign-in --------------------------------------------------------
     @safe
@@ -107,9 +144,16 @@ class Api:
 
     @safe
     def create_doctor(self, doctor_id, name, password, clinic=""):
-        self._doctor = self._store.add_doctor(doctor_id, name, password, clinic)
-        self._store.set_setting("last_doctor_id", self._doctor["doctor_id"])
-        return self._doctor
+        """First run: the first doctor makes their account and is signed in. After that only a signed-in
+        doctor can add doctors (from the account page), and they stay signed in as themselves."""
+        if not self._store.has_doctors():
+            self._doctor = self._store.add_doctor(doctor_id, name, password, clinic)
+            self._store.set_setting("last_doctor_id", self._doctor["doctor_id"])
+            return self._doctor
+        if self._doctor is None:
+            raise PermissionError("Ask a doctor who already uses Remi on this computer to add you from their Account page.")
+        self._need_doctor()
+        return self._store.add_doctor(doctor_id, name, password, clinic or self._doctor.get("clinic", ""))
 
     @safe
     def login(self, doctor_id, password):
@@ -130,7 +174,8 @@ class Api:
     def account(self):
         self._need_login()
         d = self._store.doctor(self._doctor["doctor_id"])
-        out = {"me": d, "assistants": [], "data_dir": self._store.dir}
+        out = {"me": d, "assistants": [], "data_dir": self._store.dir,
+               "copy_to_downloads": self._copy_to_downloads()}
         if d["role"] == "doctor":
             out["assistants"] = self._store.assistants(d["doctor_id"])
         else:
@@ -168,28 +213,35 @@ class Api:
         return {"ok": True}
 
     @safe
+    def set_copy_to_downloads(self, on):
+        """Whether report PDFs also get a copy in the Downloads folder (outside Remi's own data folder)."""
+        self._need_login()
+        self._store.set_setting("copy_to_downloads", bool(on))
+        return {"copy_to_downloads": bool(on)}
+
+    @safe
     def model_status(self):
         """Every AI model: installed, passes a test run, how long it took, and its tested accuracy."""
         return list(self._engine.health().values())
 
     # ---- voice (offline speech recognition for Ask Remi) ------------------------------
-    @safe
+    @safe_unlocked
     def voice_status(self):
         return self._voice.status()
 
-    @safe
+    @safe_unlocked
     def voice_prepare(self):
         return self._voice.prepare()
 
-    @safe
+    @safe_unlocked
     def voice_start(self, mode="once"):
         return self._voice.start("handsfree" if mode == "handsfree" else "once")
 
-    @safe
+    @safe_unlocked
     def voice_poll(self):
         return self._voice.poll()
 
-    @safe
+    @safe_unlocked
     def voice_stop(self):
         return self._voice.stop()
 
@@ -250,7 +302,7 @@ class Api:
             raise ValueError(f"No patient with ID {patient_id}.")
         visits = []
         for v in self._store.visits(patient_id):
-            v["xrays"] = [self._xray_summary(x) for x in self._store.xrays(v["id"])]
+            v["xrays"] = [self._xray_summary(x, bool(v["signed_by"])) for x in self._store.xrays(v["id"])]
             visits.append(v)
         return {"patient": p, "history": self._store.history(patient_id), "visits": visits,
                 "today": dt.date.today().isoformat()}
@@ -279,8 +331,7 @@ class Api:
             with os.fdopen(fd, "wb") as f:
                 f.write(raw)
             try:
-                img = Image.open(tmp)
-                img.load()
+                img = load_xray(tmp)
             except Exception:
                 raise ValueError("That file isn't an image Remi can open. Use a JPG, PNG or TIFF X-ray.")
             view, conf = self._engine.detect_view(img)
@@ -304,7 +355,7 @@ class Api:
         self._need_login()
         if view not in VIEWS:
             raise ValueError(f"Unknown view {view}.")
-        x = self._store.xray(xray_id)
+        x = self._editable_xray(xray_id)
         self._store.set_results(xray_id, self._engine.analyse(x["path"], view), view, "doctor")
         self._store.set_reviewed(xray_id, False)
         return {"ok": True}
@@ -312,14 +363,12 @@ class Api:
     @safe
     def get_xray(self, xray_id):
         self._need_login()
-        x = self._store.xray(xray_id)
-        if x is None:
-            raise ValueError("That X-ray no longer exists.")
+        x = self._xray(xray_id)
         url, w, h = image_data_url(x["path"])
         visit = self._store.visit(x["visit_id"])
         out = self._xray_summary(x)
         out.update({"image": url, "width": w, "height": h, "results": x["results"], "date": visit["date"],
-                    "marks": x["marks"]})
+                    "marks": x["marks"], "locked": bool(visit["signed_by"]), "signed_by": visit["signed_by"]})
         prev = self._store.previous_xray(visit["patient_id"], x["visit_id"], x["view"])
         if prev is not None and prev["results"]:
             purl, pw, ph = image_data_url(prev["path"])
@@ -331,8 +380,7 @@ class Api:
     def adjust_points(self, xray_id, key, index, points):
         """The doctor dragged the measuring points; save them and return the recomputed finding."""
         self._need_login()
-        x = self._store.xray(xray_id)
-        results = x["results"]
+        results = self._editable_xray(xray_id)["results"]
         finding = adjust_points(results, key, index, points)
         self._store.set_results(xray_id, results)
         return finding
@@ -341,15 +389,14 @@ class Api:
     def save_marks(self, xray_id, marks):
         """The doctor's pen strokes and flag labels drawn on this X-ray (in image pixels)."""
         self._need_login()
-        if self._store.xray(xray_id) is None:
-            raise ValueError("That X-ray no longer exists.")
+        self._editable_xray(xray_id)
         clean = []
         for m in marks if isinstance(marks, list) else []:
             if m.get("type") == "pen" and len(m.get("points", [])) >= 2:
-                clean.append({"type": "pen", "color": str(m.get("color", "#ff5a5f"))[:16],
+                clean.append({"type": "pen", "color": mark_color(m.get("color")),
                               "points": [[round(float(a), 1), round(float(b), 1)] for a, b in m["points"][:4000]]})
             elif m.get("type") == "flag":
-                clean.append({"type": "flag", "color": str(m.get("color", "#ff5a5f"))[:16],
+                clean.append({"type": "flag", "color": mark_color(m.get("color")),
                               "text": str(m.get("text", ""))[:200],
                               "pin": [round(float(v), 1) for v in m["pin"]], "at": [round(float(v), 1) for v in m["at"]]})
         self._store.set_marks(xray_id, clean)
@@ -357,13 +404,15 @@ class Api:
 
     @safe
     def mark_reviewed(self, xray_id, reviewed=True):
-        self._need_login()
+        self._need_doctor()  # the reports print "Reviewed by the doctor"
+        self._editable_xray(xray_id)
         self._store.set_reviewed(xray_id, reviewed)
         return {"ok": True}
 
     @safe
     def delete_xray(self, xray_id):
-        self._need_login()
+        self._need_doctor()
+        self._editable_xray(xray_id)
         self._store.delete_xray(xray_id)
         return {"ok": True}
 
@@ -386,10 +435,10 @@ class Api:
         return visits[0], visits[1:]
 
     def _deliver(self, path):
-        """Keep the PDF in the patient's folder, put a copy in Downloads and open it."""
+        """Keep the PDF in the patient's folder, copy it to Downloads if the setting is on, and open it."""
         downloads = os.path.join(os.path.expanduser("~"), "Downloads")
         copy = None
-        if os.path.isdir(downloads):
+        if self._copy_to_downloads() and os.path.isdir(downloads):
             copy = os.path.join(downloads, os.path.basename(path))
             shutil.copy2(path, copy)
         self._open(copy or path)
@@ -416,6 +465,8 @@ class Api:
         visit, earlier = self._visit_for_report(patient_id)
         if visit["signed_by"]:
             raise ValueError(f"This visit was already signed off by {visit['signed_by']}.")
+        if any(x["view"] == "unsure" for x in visit["xrays"]):
+            raise ValueError("Pick the X-ray type for every X-ray in this visit before signing off.")
         for x in visit["xrays"]:  # signing off means the doctor has reviewed every X-ray in the visit
             if not x["reviewed"]:
                 self._store.set_reviewed(x["id"], True)

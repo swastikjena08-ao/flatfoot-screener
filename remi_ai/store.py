@@ -176,6 +176,9 @@ class Store:
         patient_id = patient_id.strip().upper()
         if not patient_id or not name.strip():
             raise ValueError("Patient ID and name are required.")
+        if not all(c.isalnum() or c in "-_" for c in patient_id):
+            # The ID is also the patient's folder name: other characters could make two IDs share a folder.
+            raise ValueError("Patient ID can only use letters, numbers, - and _.")
         if self.patient(patient_id):
             raise ValueError(f"Patient ID {patient_id} already exists.")
         self.db.execute("INSERT INTO patients VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -327,10 +330,11 @@ class Store:
         """Most recent X-ray of the same view from an earlier visit, for comparison."""
         row = self.db.execute(
             "SELECT x.* FROM xrays x JOIN visits v ON x.visit_id = v.id "
-            "WHERE v.patient_id = ? AND x.view = ? AND v.id != ? "
-            "AND v.date <= (SELECT date FROM visits WHERE id = ?) "
+            "WHERE v.patient_id = ? AND x.view = ? AND x.results != '{}' "
+            "AND (v.date < (SELECT date FROM visits WHERE id = ?) "
+            "     OR (v.date = (SELECT date FROM visits WHERE id = ?) AND v.id < ?)) "
             "ORDER BY v.date DESC, v.id DESC, x.id DESC LIMIT 1",
-            (patient_id, view, before_visit_id, before_visit_id)).fetchone()
+            (patient_id, view, before_visit_id, before_visit_id, before_visit_id)).fetchone()
         return self._xray_row(row) if row else None
 
     def unreviewed_count(self, patient_id):

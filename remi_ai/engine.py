@@ -13,7 +13,7 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 # Repo root when run from source; the bundle folder when packaged with PyInstaller.
 REPO = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,13 +36,13 @@ CHECKS = {
     "heel_spur": {"name": "Heel spur", "view": "side",
                   "score": "97.5% correct on 595 unseen X-rays"},
     "bunion": {"name": "Bunion angles", "view": "top_down",
-               "score": "Within 3° of doctors: HVA 85.0%, IMA 95.6% (160 feet)"},
+               "score": "Within 3° of doctors: HVA 84.4%, IMA 95.6% (160 unseen feet)"},
 }
 
 # Every model in the app, for the account page's model list.
 MODELS = {
     "view_check": {"name": "X-ray check", "what": "Says what kind of X-ray it is and routes it to the right checks",
-                   "view": "Any", "score": "99.1% correct; 83.1% on X-rays from a new hospital"},
+                   "view": "Any", "score": "98.7% correct on 1,738 unseen X-rays"},
     "flat_foot": {"name": "Flat foot", "what": "Flat foot classifier plus heel bone (arch) angle",
                   "view": "Side", "score": CHECKS["flat_foot"]["score"]},
     "heel_spur": {"name": "Heel spur", "what": "Finds the heel, then normal / heel spur / Sever's",
@@ -50,6 +50,16 @@ MODELS = {
     "bunion": {"name": "Bunion angles", "what": "Big toe (HVA) and bone gap (IMA) angles from 6 points per foot",
                "view": "Top-down", "score": CHECKS["bunion"]["score"]},
 }
+
+def load_xray(path_or_file):
+    """Open an X-ray the way the window shows it: turned upright if the file says it was
+    saved rotated (common for photos and some exports), so the models' points line up
+    with the picture on screen."""
+    img = Image.open(path_or_file)
+    img = ImageOps.exif_transpose(img)
+    img.load()
+    return img
+
 
 FLAT_BELOW = 17.7   # heel bone angle under this = flat foot (landmarks.json threshold)
 HIGH_ABOVE = 30.0   # over this = high arch
@@ -71,6 +81,25 @@ def bunion_grade(hva, ima):
     h = 0 if hva < 15 else 1 if hva <= 20 else 2 if hva <= 40 else 3
     i = 0 if ima < 9 else 1 if ima <= 11 else 2 if ima <= 16 else 3
     return ["No bunion", "Mild bunion", "Moderate bunion", "Severe bunion"][max(h, i)]
+
+
+SEVERITIES = ["ok", "warn", "alert"]  # least to most serious
+
+
+def worst(severities):
+    return max(severities, key=SEVERITIES.index)
+
+
+def flat_severity(category):
+    return "ok" if category in ("Normal arch", "Not measured") else "warn"
+
+
+def bunion_severity(grade):
+    if grade == "No bunion":
+        return "ok"
+    if grade == "Mild bunion":
+        return "warn"
+    return "alert"
 
 
 def _acute_angle(a0, a1, b0, b1):
@@ -97,7 +126,7 @@ def adjust_points(results, key, index, points):
         cat = flat_category(angle) if 0 <= angle <= 45 else "Not measured"
         r.update(points={**r["points"], "L10": p10, "L11": p11}, angle=angle, category=cat, tilt=0,
                  reason="" if cat != "Not measured" else "The heel points don't give a usable angle.",
-                 severity="ok" if cat in ("Normal arch", "Not measured") else "warn", edited=True)
+                 severity=flat_severity(cat), edited=True)
         return r
     if key == "bunion" and "bunion" in checks:
         feet = checks["bunion"]["feet"]
@@ -108,9 +137,8 @@ def adjust_points(results, key, index, points):
         hva = round(_acute_angle(p[0], p[1], p[2], p[3]), 1)
         ima = round(_acute_angle(p[2], p[3], p[4], p[5]), 1)
         grade = bunion_grade(hva, ima)
-        f.update(points=p, hva=hva, ima=ima, grade=grade, edited=True,
-                 severity="ok" if grade == "No bunion" else "warn" if grade == "Mild bunion" else "alert")
-        checks["bunion"]["severity"] = max((x["severity"] for x in feet), key=["ok", "warn", "alert"].index)
+        f.update(points=p, hva=hva, ima=ima, grade=grade, edited=True, severity=bunion_severity(grade))
+        checks["bunion"]["severity"] = worst(x["severity"] for x in feet)
         return f
     raise ValueError("That finding has no points to adjust.")
 
@@ -250,8 +278,7 @@ class Engine:
     # ---- analysis --------------------------------------------------------------------
     def analyse(self, path, view, progress=None):
         """Run only the checks that fit `view`. Returns a JSON-safe dict."""
-        img = Image.open(path)
-        img.load()
+        img = load_xray(path)
         out = {"view": view, "checks": {}, "skipped": {}}
         wanted = ROUTES.get(view, [])
         ctx = {}  # shared between checks on this X-ray: the heel box helps place the arch angle points
@@ -306,7 +333,7 @@ class Engine:
             "reason": reason,
             "points": {k: [float(v[0]), float(v[1])] for k, v in (r["points"] or {}).items()},
             "heatmap": _round_map(r["heatmap"]),
-            "severity": "ok" if cat in ("Normal arch", "Not measured") else "warn",
+            "severity": flat_severity(cat),
         }
 
     def _run_heel_spur(self, model, img, ctx):
@@ -339,9 +366,8 @@ class Engine:
             grade = bunion_grade(f["hva"], f["ima"])
             out.append({"side": f["side"], "hva": round(float(f["hva"]), 1), "ima": round(float(f["ima"]), 1),
                         "points": [[float(x), float(y)] for x, y in f["points"]], "box": list(f["box"]),
-                        "grade": grade,
-                        "severity": "ok" if grade == "No bunion" else "warn" if grade == "Mild bunion" else "alert"})
-        return {"feet": out, "severity": max((f["severity"] for f in out), key=["ok", "warn", "alert"].index)}
+                        "grade": grade, "severity": bunion_severity(grade)})
+        return {"feet": out, "severity": worst(f["severity"] for f in out)}
 
 
 def findings(results):
